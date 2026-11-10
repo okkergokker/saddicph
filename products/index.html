@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Products — Saddi</title>
+<meta name="theme-color" content="#f6e29a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Averia+Serif+Libre:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --wall: #f6e29a;
+    --ink: #6b1c23;
+    --ink-soft: rgba(107, 28, 35, .78);
+    --line: rgba(107, 28, 35, .28);
+    color-scheme: light;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--wall); color: var(--ink); }
+  body {
+    min-height: 100%;
+    font-family: "Averia Serif Libre", Palatino, "Palatino Linotype", Georgia, serif;
+  }
+  a { color: inherit; }
+  button, select { font: inherit; color: inherit; }
+  .wrap {
+    width: min(1080px, calc(100% - 48px));
+    margin: 0 auto;
+    padding: calc(env(safe-area-inset-top, 0px) + 28px) 0 calc(env(safe-area-inset-bottom, 0px) + 48px);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: clamp(28px, 5vh, 56px);
+  }
+  .logo img { display: block; width: min(180px, 46vw); height: auto; }
+  .cart-toggle {
+    border: 1.5px solid var(--ink);
+    background: transparent;
+    border-radius: 999px;
+    padding: 0.4em 0.95em 0.32em;
+    cursor: pointer;
+  }
+  .cart-toggle:hover, .cart-toggle[aria-expanded="true"] { background: var(--ink); color: var(--wall); }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.8fr);
+    gap: clamp(28px, 4vw, 56px);
+    align-items: start;
+  }
+  .status { margin: 0; font-size: 20px; }
+  .product {
+    display: grid;
+    gap: 18px;
+  }
+  .product + .product { margin-top: 36px; padding-top: 36px; border-top: 1px solid var(--line); }
+  .product img {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: min(58vh, 520px);
+    object-fit: contain;
+  }
+  .product h1 { margin: 0; font-size: clamp(32px, 4vw, 48px); font-weight: 400; }
+  .price { margin: 0; font-size: 22px; }
+  .buy { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  select, .add, .checkout, .remove {
+    border: 1.5px solid var(--ink);
+    background: transparent;
+    border-radius: 999px;
+    padding: 0.45em 1.05em 0.35em;
+  }
+  .add, .checkout, .remove { cursor: pointer; text-decoration: none; display: inline-flex; }
+  .add:hover, .checkout:hover, .remove:hover { background: var(--ink); color: var(--wall); }
+  .add:disabled { opacity: .45; cursor: not-allowed; }
+  .note { margin: 0; min-height: 1.3em; color: var(--ink-soft); }
+  .cart {
+    border: 1.5px solid var(--line);
+    padding: 22px 20px 20px;
+    position: sticky;
+    top: 20px;
+  }
+  .cart h2 { margin: 0 0 16px; font-size: 28px; font-weight: 400; }
+  .cart p { margin: 0; }
+  .line {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+  }
+  .line img { width: 64px; height: 64px; object-fit: cover; }
+  .line h3 { margin: 0 0 4px; font-size: 18px; font-weight: 400; }
+  .line p { margin: 0; color: var(--ink-soft); }
+  .total {
+    display: flex;
+    justify-content: space-between;
+    margin: 8px 0 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 20px;
+  }
+  @media (max-width: 760px) {
+    .wrap { width: min(100% - 36px, 1080px); }
+    .layout { grid-template-columns: 1fr; }
+    .cart { position: static; }
+    .cart[hidden] { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="logo" href="/"><img src="/logo.png?v=2" alt="Saddi" width="895" height="312"></a>
+      <button class="cart-toggle" id="cart-toggle" type="button" aria-expanded="true" aria-controls="cart">Kurv</button>
+    </header>
+    <div class="layout">
+      <main id="catalog"><p class="status">Henter produkter…</p></main>
+      <aside class="cart" id="cart">
+        <h2>Kurv</h2>
+        <div id="cart-body"><p>Kurven er tom.</p></div>
+      </aside>
+    </div>
+  </div>
+<script>
+(function () {
+  const CART_KEY = 'saddi-cart-id';
+  const CART_FIELDS = `
+    id
+    checkoutUrl
+    totalQuantity
+    cost { totalAmount { amount currencyCode } }
+    lines(first: 50) {
+      edges {
+        node {
+          id
+          quantity
+          merchandise {
+            ... on ProductVariant {
+              id
+              title
+              image { url altText }
+              product { title featuredImage { url altText } }
+              price { amount currencyCode }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const catalog = document.getElementById('catalog');
+  const cartEl = document.getElementById('cart');
+  const cartBody = document.getElementById('cart-body');
+  const cartToggle = document.getElementById('cart-toggle');
+  let cart = null;
+
+  cartToggle.addEventListener('click', () => {
+    if (!window.matchMedia('(max-width: 760px)').matches) {
+      cartEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+    const open = cartEl.hidden;
+    cartEl.hidden = !open;
+    cartToggle.setAttribute('aria-expanded', String(open));
+  });
+
+  function money(amount, currency) {
+    return new Intl.NumberFormat('da-DK', { style: 'currency', currency }).format(Number(amount));
+  }
+
+  function text(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[char]));
+  }
+
+  async function gql(query, variables) {
+    const response = await fetch('/api/storefront', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables }),
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.errors) {
+      const message = payload.errors ? payload.errors.map((error) => error.message).join(' ') : 'Shopify svarede ikke.';
+      throw new Error(message);
+    }
+    return payload.data;
+  }
+
+  function linesOf(next) {
+    return (next && next.lines && next.lines.edges || []).map((edge) => edge.node);
+  }
+
+  function showCart(next) {
+    cart = next;
+    if (next && next.id) localStorage.setItem(CART_KEY, next.id);
+    const count = next ? next.totalQuantity : 0;
+    cartToggle.textContent = count ? 'Kurv (' + count + ')' : 'Kurv';
+    const lines = linesOf(next);
+    if (!lines.length) {
+      cartBody.innerHTML = '<p>Kurven er tom.</p>';
+      return;
+    }
+    const rows = lines.map((line) => {
+      const item = line.merchandise;
+      const image = (item.image && item.image.url) || (item.product.featuredImage && item.product.featuredImage.url) || '';
+      const alt = (item.image && item.image.altText) || item.product.title;
+      const variant = item.title && item.title !== 'Default Title' ? '<p>' + text(item.title) + '</p>' : '';
+      return '<article class="line">' +
+        (image ? '<img src="' + text(image) + '" alt="' + text(alt) + '">' : '<span></span>') +
+        '<div><h3>' + text(item.product.title) + '</h3>' + variant +
+        '<p>' + line.quantity + ' × ' + money(item.price.amount, item.price.currencyCode) + '</p>' +
+        '<button class="remove" type="button" data-line="' + line.id + '">Fjern</button></div></article>';
+    }).join('');
+    const total = next.cost.totalAmount;
+    cartBody.innerHTML = rows +
+      '<p class="total"><span>I alt</span><span>' + money(total.amount, total.currencyCode) + '</span></p>' +
+      '<a class="checkout" href="' + text(next.checkoutUrl) + '">Gå til kassen</a>';
+    cartEl.hidden = false;
+    cartToggle.setAttribute('aria-expanded', 'true');
+  }
+
+  async function loadCart() {
+    const id = localStorage.getItem(CART_KEY);
+    if (!id) return;
+    const data = await gql('query Cart($id: ID!) { cart(id: $id) { ' + CART_FIELDS + ' } }', { id });
+    if (!data.cart) {
+      localStorage.removeItem(CART_KEY);
+      return;
+    }
+    showCart(data.cart);
+  }
+
+  async function addVariant(variantId, button) {
+    button.disabled = true;
+    const note = button.closest('.product').querySelector('.note');
+    note.textContent = '';
+    try {
+      const line = { merchandiseId: variantId, quantity: 1 };
+      let data;
+      if (!cart) {
+        data = await gql(
+          'mutation CartCreate($lines: [CartLineInput!]!) { cartCreate(input: { lines: $lines }) { cart { ' + CART_FIELDS + ' } userErrors { message } } }',
+          { lines: [line] }
+        );
+        const result = data.cartCreate;
+        if (result.userErrors.length) throw new Error(result.userErrors.map((error) => error.message).join(' '));
+        showCart(result.cart);
+      } else {
+        data = await gql(
+          'mutation CartLinesAdd($cartId: ID!, $lines: [CartLineInput!]!) { cartLinesAdd(cartId: $cartId, lines: $lines) { cart { ' + CART_FIELDS + ' } userErrors { message } } }',
+          { cartId: cart.id, lines: [line] }
+        );
+        const result = data.cartLinesAdd;
+        if (result.userErrors.length) throw new Error(result.userErrors.map((error) => error.message).join(' '));
+        showCart(result.cart);
+      }
+      note.textContent = 'Lagt i kurven.';
+    } catch (error) {
+      note.textContent = error.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function removeLine(lineId) {
+    const data = await gql(
+      'mutation CartLinesRemove($cartId: ID!, $lineIds: [ID!]!) { cartLinesRemove(cartId: $cartId, lineIds: $lineIds) { cart { ' + CART_FIELDS + ' } userErrors { message } } }',
+      { cartId: cart.id, lineIds: [lineId] }
+    );
+    const result = data.cartLinesRemove;
+    if (result.userErrors.length) throw new Error(result.userErrors.map((error) => error.message).join(' '));
+    showCart(result.cart);
+  }
+
+  function renderProducts(products) {
+    if (!products.length) {
+      catalog.innerHTML = '<p class="status">Der er ingen produkter endnu.</p>';
+      return;
+    }
+    catalog.innerHTML = products.map((product) => {
+      const variants = product.variants.edges.map((edge) => edge.node);
+      const image = product.featuredImage;
+      const choices = variants.length > 1 || (variants[0] && variants[0].title !== 'Default Title')
+        ? '<select aria-label="Variant">' + variants.map((variant) =>
+            '<option value="' + text(variant.id) + '"' + (variant.availableForSale ? '' : ' disabled') + '>' +
+            text(variant.title) + ' — ' + money(variant.price.amount, variant.price.currencyCode) +
+            '</option>').join('') + '</select>'
+        : '';
+      const soldOut = !product.availableForSale;
+      return '<article class="product">' +
+        (image ? '<img src="' + text(image.url) + '" alt="' + text(image.altText || product.title) + '">' : '') +
+        '<h1>' + text(product.title) + '</h1>' +
+        (product.description ? '<p>' + text(product.description) + '</p>' : '') +
+        '<p class="price">' + money(product.priceRange.minVariantPrice.amount, product.priceRange.minVariantPrice.currencyCode) + '</p>' +
+        '<div class="buy">' + choices +
+        '<button class="add" type="button"' + (soldOut ? ' disabled' : '') + '>' + (soldOut ? 'Udsolgt' : 'Læg i kurv') + '</button>' +
+        '</div><p class="note" role="status"></p></article>';
+    }).join('');
+
+    catalog.querySelectorAll('.product').forEach((article, index) => {
+      const product = products[index];
+      const variants = product.variants.edges.map((edge) => edge.node);
+      const button = article.querySelector('.add');
+      const select = article.querySelector('select');
+      button.addEventListener('click', () => {
+        const variantId = select ? select.value : variants[0].id;
+        addVariant(variantId, button);
+      });
+    });
+  }
+
+  cartBody.addEventListener('click', (event) => {
+    const button = event.target.closest('.remove');
+    if (!button || !cart) return;
+    button.disabled = true;
+    removeLine(button.dataset.line).catch((error) => {
+      button.disabled = false;
+      cartBody.insertAdjacentHTML('beforeend', '<p class="note">' + error.message + '</p>');
+    });
+  });
+
+  gql('query Products { products(first: 20) { edges { node { id title description availableForSale featuredImage { url altText } priceRange { minVariantPrice { amount currencyCode } } variants(first: 20) { edges { node { id title availableForSale price { amount currencyCode } } } } } } } }')
+    .then((data) => renderProducts(data.products.edges.map((edge) => edge.node)))
+    .catch((error) => {
+      catalog.innerHTML = '<p class="status">' + error.message + '</p>';
+    });
+
+  loadCart().catch(() => localStorage.removeItem(CART_KEY));
+})();
+</script>
+</body>
+</html>

@@ -84,6 +84,25 @@
     letter-spacing: .02em;
     color: var(--ink-soft);
   }
+  .content .products {
+    align-self: flex-start;
+    display: inline-flex;
+    margin-top: clamp(28px, 4vh, 44px);
+    padding: 0.45em 1.1em 0.38em;
+    border: 1.5px solid var(--ink);
+    border-radius: 999px;
+    color: var(--ink);
+    background: transparent;
+    text-decoration: none;
+    font-size: clamp(16px, 1.25vw, 20px);
+    letter-spacing: .03em;
+    line-height: 1.2;
+  }
+  .content .products:hover,
+  .content .products:focus-visible {
+    background: var(--ink);
+    color: var(--wall);
+  }
 
   canvas#scene {
     position: fixed;
@@ -157,6 +176,7 @@
     <p class="lead">Something is cooking.</p>
     <p class="sub">But we're keeping things under wraps a little longer.</p>
     <p class="tune">Stay tuned.</p>
+    <a class="products" href="/products/">Products</a>
   </main>
   <canvas id="scene" role="img" aria-label="A linen tea towel hanging from a chrome clip and leather cord on a nail, swaying in a light breeze"></canvas>
   <p class="hint" id="hint" role="status"></p>
