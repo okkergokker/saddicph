@@ -150,7 +150,7 @@ function renderFront(products, root) {
     const variant = variants.find((item) => item.availableForSale) || variants[0]
     const buy = variant
       ? '<div class="qty"><button class="qty-less" type="button" aria-label="Decrease quantity" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.4 12.3c5.4-.5 10.2.4 15.3-.3"/></svg></button><span class="qty-count">1</span><button class="qty-more" type="button" aria-label="Increase quantity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.2c5.2-.4 10.1.3 15.1-.2"/><path d="M12.2 4.3c-.4 5.3.4 10.2-.2 15.2"/></svg></button></div>' +
-        '<button class="to-basket" type="button" data-variant="' + text(variant.id) + '">Add to bag</button>' +
+        '<button class="to-basket" type="button" data-variant="' + text(variant.id) + '">Add to cart</button>' +
         '<p class="note" role="status"></p>'
       : ''
     return '<article class="product">' +
@@ -167,7 +167,7 @@ function renderFront(products, root) {
 function renderCart(cart, root) {
   const lines = linesOf(cart)
   if (!lines.length) {
-    root.innerHTML = '<p class="status">Your bag is empty.</p>'
+    root.innerHTML = '<p class="status">Your cart is empty.</p>'
     return
   }
   const rows = lines.map((line) => {
