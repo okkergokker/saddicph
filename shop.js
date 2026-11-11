@@ -49,6 +49,12 @@ async function gql(query, variables) {
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+// The production CSS minifier rewrites times like 1400ms as 1.4s (and may drop the unit on 0).
+function cssTimeMs(value, fallback) {
+  const match = String(value).trim().match(/^(\d*\.?\d+)(ms|s)?$/)
+  return match ? Number(match[1]) * (match[2] === 's' ? 1000 : 1) : fallback
+}
+
 // Re-trigger a CSS animation by removing the class, forcing a reflow and adding it again.
 function replay(element, className, ...others) {
   element.classList.remove(className, ...others)
@@ -270,23 +276,23 @@ async function boot() {
     }
     const isBagOpen = () => bag.classList.contains('is-open')
     const drawer = bag.querySelector('.bag-drawer')
+    // The cart sheet is a non-modal dropdown: the page keeps scrolling and stays usable.
+    drawer.setAttribute('aria-modal', 'false')
     let bagCloseTimer = 0
-    // The page stays scroll-locked until the drawer is fully out, so nothing reflows mid-slide.
     const finishClose = () => {
       clearTimeout(bagCloseTimer)
       if (isBagOpen() || bag.hidden) return
       bag.hidden = true
-      document.body.classList.remove('bag-open')
     }
     drawer.addEventListener('transitionend', (event) => {
-      if (event.target === drawer && event.propertyName === 'transform') finishClose()
+      // Safari may report the property as -webkit-clip-path.
+      if (event.target === drawer && event.propertyName.includes('clip-path')) finishClose()
     })
     // fromKeyboard: move focus only for keyboard/assistive use; on touch it can draw a focus ring.
     const setBagOpen = (open, fromKeyboard = false) => {
       clearTimeout(bagCloseTimer)
       bagButton.setAttribute('aria-expanded', open ? 'true' : 'false')
       if (open) {
-        document.body.classList.add('bag-open')
         drawBag(true)
         bag.hidden = false
         void bag.offsetWidth
@@ -299,16 +305,23 @@ async function boot() {
         if (fromKeyboard) bagButton.focus({ preventScroll: true })
         else document.activeElement.blur()
       }
-      const closeMs = prefersReducedMotion() ? 0 : (parseFloat(getComputedStyle(bag).getPropertyValue('--bag-close-ms')) || 1400) + 120
-      bagCloseTimer = setTimeout(finishClose, closeMs)
+      const closeMs = prefersReducedMotion() ? 0 : cssTimeMs(getComputedStyle(bag).getPropertyValue('--bag-close-ms'), 1300)
+      if (closeMs === 0) finishClose()
+      else bagCloseTimer = setTimeout(finishClose, closeMs + 120)
     }
     // A click with detail 0 comes from the keyboard or assistive tech, not a pointer.
     bagButton.addEventListener('click', (event) => setBagOpen(!isBagOpen(), event.detail === 0))
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && isBagOpen()) setBagOpen(false, true)
     })
+    // A tap or click anywhere outside the sheet (other than Cart, which toggles) closes it.
+    // Scrolling never fires a click, so the page can be scrolled with the cart open.
+    document.addEventListener('click', (event) => {
+      if (!isBagOpen() || drawer.contains(event.target) || bagButton.contains(event.target)) return
+      setBagOpen(false, event.detail === 0)
+    })
     bag.addEventListener('click', async (event) => {
-      if (event.target.closest('.bag-close, .bag-shade')) {
+      if (event.target.closest('.bag-close')) {
         setBagOpen(false, event.detail === 0)
         return
       }
