@@ -80,7 +80,7 @@ header {
 .bag {
   --gutter: clamp(28px, 4vw, 64px);
   --bag-inset: clamp(10px, 1.4vw, 20px);
-  --bag-radius: clamp(14px, 1.8vw, 22px);
+  --bag-feather: clamp(12px, 1.6vw, 22px);
   --edge-l: max(env(safe-area-inset-left, 0px), var(--bag-inset));
   --edge-r: max(env(safe-area-inset-right, 0px), var(--bag-inset));
   --content-l: max(env(safe-area-inset-left, 0px), var(--gutter));
@@ -116,7 +116,6 @@ header {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: var(--bag-radius);
   min-height: calc(36px + var(--logo-h) + 44px - var(--bag-inset));
   max-height: 80vh;
   max-height: min(80dvh, 820px);
@@ -128,7 +127,17 @@ header {
   background: rgba(244, 216, 219, .6);
   -webkit-backdrop-filter: blur(34px) saturate(1.2);
   backdrop-filter: blur(34px) saturate(1.2);
-  box-shadow: 0 28px 60px -30px rgba(107, 28, 35, .4);
+  /* Feathered edges: the glass fades out over --bag-feather on every side (two gradients
+     intersected), so the sheet has no hard outline, also while it rolls. The mask sits on
+     the blurred element itself, never on an ancestor. */
+  -webkit-mask-image:
+    linear-gradient(to bottom, transparent, #000 var(--bag-feather), #000 calc(100% - var(--bag-feather)), transparent),
+    linear-gradient(to right, transparent, #000 var(--bag-feather), #000 calc(100% - var(--bag-feather)), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to bottom, transparent, #000 var(--bag-feather), #000 calc(100% - var(--bag-feather)), transparent),
+    linear-gradient(to right, transparent, #000 var(--bag-feather), #000 calc(100% - var(--bag-feather)), transparent);
+  mask-composite: intersect;
   color: var(--ink);
   pointer-events: auto;
 }
@@ -497,7 +506,7 @@ html { scrollbar-gutter: stable; }
    the glass "condenses" by fading in instead.
    The roll is two opposite transforms on the same duration and curve: the sheet slides down
    from above .bag's clip edge while its content slides up by the same distance (--sheet-h,
-   measured by shop.js), so the content stands still and the sheet's rounded lower edge sweeps
+   measured by shop.js), so the content stands still and the sheet's feathered lower edge sweeps
    down over it. The extra 14px gives the content a slight lift in and out.
    Never put opacity, filter, clip-path or mask on .bag (an ancestor of the blurred sheet):
    the backdrop blur would have nothing to sample and turn into flat pink. */
