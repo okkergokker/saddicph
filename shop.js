@@ -62,35 +62,39 @@ function seededRandom(seed) {
 }
 
 // One slightly uneven stroke from (x1, y1) to (x2, y2) that overshoots both ends a little.
-function inkStroke(x1, y1, x2, y2, rand) {
+// Its shape depends only on the distance along the stroke in px (and on `ref`, the length its
+// tilt is spread over), never on the stroke's own length. So when the sheet grows or shrinks,
+// a side stroke just gets longer or shorter at its lower end and the rest stays exactly put:
+// it can be redrawn every frame without the line swimming or snapping.
+function inkStroke(x1, y1, x2, y2, rand, ref) {
   const len = Math.hypot(x2 - x1, y2 - y1)
   const ux = (x2 - x1) / len
   const uy = (y2 - y1) / len
   const before = 2 + rand() * 4
   const after = 2 + rand() * 4
-  const tilt = (rand() - 0.5) * 1.6
-  // A long gentle sway plus a finer tremor, both under a pixel or so.
+  const drift = ((rand() - 0.5) * 1.6) / ref
+  // A long gentle sway plus a finer tremor, both under a pixel or so (wavelengths in px).
   const waves = [
-    [0.5 + rand() * 0.6, rand() * Math.PI * 2, len / (220 + rand() * 160)],
-    [0.2 + rand() * 0.25, rand() * Math.PI * 2, len / (45 + rand() * 30)],
+    [0.5 + rand() * 0.6, rand() * Math.PI * 2, 220 + rand() * 160],
+    [0.2 + rand() * 0.25, rand() * Math.PI * 2, 45 + rand() * 30],
   ]
-  const total = before + len + after
-  const steps = Math.max(2, Math.round(total / 12))
-  let d = ''
-  for (let i = 0; i <= steps; i++) {
-    const s = -before + (total * i) / steps
-    const t = s / len
-    let off = tilt * t
-    for (const [amp, phase, cycles] of waves) off += amp * Math.sin(phase + t * cycles * Math.PI * 2)
-    d += `${i ? 'L' : 'M'}${(x1 + ux * s - uy * off).toFixed(1)} ${(y1 + uy * s + ux * off).toFixed(1)}`
+  const point = (s) => {
+    let off = drift * s
+    for (const [amp, phase, wavelength] of waves) off += amp * Math.sin(phase + (s / wavelength) * Math.PI * 2)
+    return `${(x1 + ux * s - uy * off).toFixed(1)} ${(y1 + uy * s + ux * off).toFixed(1)}`
   }
-  return d
+  // Fixed 12px sampling from the start, so a longer stroke only gains points at its end.
+  let d = 'M' + point(-before)
+  for (let s = -before + 12; s < len + after; s += 12) d += 'L' + point(s)
+  return d + 'L' + point(len + after)
 }
 
 // Paths are created once and only their shape is updated on resize, so a resize during the
-// draw-in does not restart it. While the sheet changes height the drawing simply stretches
-// (preserveAspectRatio none, strokes keep their width) and is redrawn once it settles, so no
-// path is rebuilt on every animation frame.
+// draw-in does not restart it. The outline is redrawn at the sheet's true size on every resize,
+// including every frame while the sheet's height animates (a line folding away or opening up).
+// It is never stretched: stretching moved the bottom stroke and corner crossings, and the
+// redraw after it snapped the side strokes into a new shape. Because inkStroke's shape does not
+// depend on length, these per-frame redraws leave every stroke still except the moving bottom.
 function inkOutline(sheet) {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('class', 'bag-outline')
@@ -116,15 +120,22 @@ function inkOutline(sheet) {
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`)
     const rand = seededRandom(23)
     const m = 8
-    const sides = [[m, m, w - m, m], [w - m, m, w - m, h - m], [m, h - m, w - m, h - m], [m, m, m, h - m]]
-    paths.forEach((path, i) => path.setAttribute('d', inkStroke(...sides[i >> 1], rand)))
+    // Horizontal strokes spread their tilt over their own (height-independent) length; the
+    // side strokes use a fixed reference so a height change never re-tilts them.
+    const sides = [
+      [m, m, w - m, m, w - 2 * m],
+      [w - m, m, w - m, h - m, 400],
+      [m, h - m, w - m, h - m, w - 2 * m],
+      [m, m, m, h - m, 400],
+    ]
+    paths.forEach((path, i) => {
+      const [x1, y1, x2, y2, ref] = sides[i >> 1]
+      path.setAttribute('d', inkStroke(x1, y1, x2, y2, rand, ref))
+    })
   }
-  let settle = 0
-  new ResizeObserver(() => {
-    clearTimeout(settle)
-    if (!svg.hasAttribute('viewBox')) draw()
-    else settle = setTimeout(draw, 150)
-  }).observe(sheet)
+  // ResizeObserver runs after layout and before paint, so each redraw lands in the same frame
+  // as the size change.
+  new ResizeObserver(draw).observe(sheet)
   draw()
 }
 
