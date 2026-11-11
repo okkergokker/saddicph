@@ -395,7 +395,7 @@ function scrollHomeMark() {
   const mark = document.querySelector('.logo-s')
   if (!mark) return
   mark.addEventListener('click', () => {
-    if (window.scrollY <= 0) return
+    if (window.scrollY <= 0 || document.querySelector('.bag.is-open')) return
     window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
   })
 }
@@ -648,7 +648,8 @@ async function boot() {
     // Adding to the cart (and picking a quantity for it) keeps the cart open to show the change.
     document.addEventListener('click', (event) => {
       if (!isBagOpen() || drawer.contains(event.target) || bagButton.contains(event.target)) return
-      if (event.target.closest('.to-basket, .qty')) return
+      // The S sits on top of the sheet, so a click on it is not a click outside.
+      if (event.target.closest('.to-basket, .qty, .logo-s')) return
       setBagOpen(false, event.detail === 0)
     })
     bag.addEventListener('click', async (event) => {
