@@ -66,12 +66,15 @@ function seededRandom(seed) {
 // tilt is spread over), never on the stroke's own length. So when the sheet grows or shrinks,
 // a side stroke just gets longer or shorter at its lower end and the rest stays exactly put:
 // it can be redrawn every frame without the line swimming or snapping.
-function inkStroke(x1, y1, x2, y2, rand, ref) {
+// `fixedAfter` pins the overshoot past (x2, y2); the random value is still drawn so the seeded
+// sequence, and with it every stroke's hand, stays the same.
+function inkStroke(x1, y1, x2, y2, rand, ref, fixedAfter) {
   const len = Math.hypot(x2 - x1, y2 - y1)
   const ux = (x2 - x1) / len
   const uy = (y2 - y1) / len
   const before = 2 + rand() * 4
-  const after = 2 + rand() * 4
+  const randomAfter = 2 + rand() * 4
+  const after = fixedAfter ?? randomAfter
   const drift = ((rand() - 0.5) * 1.6) / ref
   // A long gentle sway plus a finer tremor, both under a pixel or so (wavelengths in px).
   const waves = [
@@ -96,7 +99,13 @@ function inkStroke(x1, y1, x2, y2, rand, ref) {
 // Paths are created once and only their shape is updated on resize, so a resize during the
 // draw-in does not restart it. The outline is never stretched, and since inkStroke's shape does
 // not depend on length, a redraw at a new height only lengthens or shortens the side strokes.
+// The side strokes always end exactly INK_TAIL px past the bottom stroke, and the top/side
+// layer sits in a frame that clips at that same line and rides the sheet's edge. So during a
+// glide (when the side strokes are drawn longer than the visible sheet) and after it, they end
+// in the very same place, and the redraw at the end of a glide changes nothing visible.
 const INK_BOTTOM_H = 24
+const INK_MARGIN = 8
+const INK_TAIL = 4
 function inkOutline(sheet) {
   const makeSvg = (cls) => {
     const svg = document.createElementNS(SVG_NS, 'svg')
@@ -105,7 +114,12 @@ function inkOutline(sheet) {
     svg.setAttribute('preserveAspectRatio', 'none')
     return svg
   }
+  const frame = document.createElement('div')
+  frame.className = 'bag-ink'
+  frame.style.bottom = INK_MARGIN - INK_TAIL + 'px'
   const svg = makeSvg('bag-outline')
+  svg.style.height = `calc(100% + ${INK_MARGIN - INK_TAIL}px)`
+  frame.append(svg)
   const bottom = makeSvg('bag-outline bag-outline-bottom')
   const paths = []
   for (let side = 0; side < 4; side++) {
@@ -119,7 +133,7 @@ function inkOutline(sheet) {
       ;(side === 2 ? bottom : svg).append(path)
     }
   }
-  sheet.prepend(svg, bottom)
+  sheet.prepend(frame, bottom)
   const draw = () => {
     const w = sheet.clientWidth
     const h = sheet.clientHeight
@@ -128,19 +142,20 @@ function inkOutline(sheet) {
     bottom.setAttribute('viewBox', `0 0 ${w} ${INK_BOTTOM_H}`)
     // All eight strokes come from one seeded sequence in a fixed order, so the hand never changes.
     const rand = seededRandom(23)
-    const m = 8
+    const m = INK_MARGIN
     const yb = INK_BOTTOM_H - m
     // Horizontal strokes spread their tilt over their own (height-independent) length; the
-    // side strokes use a fixed reference so a height change never re-tilts them.
+    // side strokes use a fixed reference so a height change never re-tilts them, and a fixed
+    // tail past the bottom stroke (see INK_TAIL).
     const sides = [
       [m, m, w - m, m, w - 2 * m],
-      [w - m, m, w - m, h - m, 400],
+      [w - m, m, w - m, h - m, 400, INK_TAIL],
       [m, yb, w - m, yb, w - 2 * m],
-      [m, m, m, h - m, 400],
+      [m, m, m, h - m, 400, INK_TAIL],
     ]
     paths.forEach((path, i) => {
-      const [x1, y1, x2, y2, ref] = sides[i >> 1]
-      path.setAttribute('d', inkStroke(x1, y1, x2, y2, rand, ref))
+      const [x1, y1, x2, y2, ref, tail] = sides[i >> 1]
+      path.setAttribute('d', inkStroke(x1, y1, x2, y2, rand, ref, tail))
     })
   }
   // ResizeObserver runs after layout and before paint, so each redraw lands in the same frame

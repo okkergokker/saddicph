@@ -141,6 +141,17 @@ header {
   height: 100%;
   pointer-events: none;
 }
+/* Frame for the top/side strokes: rides the sheet and clips just past the bottom stroke, so
+   the side strokes end in the same place during a contents glide and after it (inkOutline
+   sets its bottom inset and the outline's height to match). */
+.bag-ink {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
 /* The bottom stroke's own strip, pinned to the sheet's bottom edge (see inkOutline). */
 .bag-outline-bottom {
   top: auto;
