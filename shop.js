@@ -88,17 +88,21 @@ function inkStroke(x1, y1, x2, y2, rand) {
 }
 
 // Paths are created once and only their shape is updated on resize, so a resize during the
-// draw-in does not restart it.
+// draw-in does not restart it. While the sheet changes height the drawing simply stretches
+// (preserveAspectRatio none, strokes keep their width) and is redrawn once it settles, so no
+// path is rebuilt on every animation frame.
 function inkOutline(sheet) {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('class', 'bag-outline')
   svg.setAttribute('aria-hidden', 'true')
+  svg.setAttribute('preserveAspectRatio', 'none')
   const paths = []
   for (let side = 0; side < 4; side++) {
     for (const cls of ['ink', 'ink-echo']) {
       const path = document.createElementNS(SVG_NS, 'path')
       path.setAttribute('class', cls)
       path.setAttribute('pathLength', '100')
+      path.setAttribute('vector-effect', 'non-scaling-stroke')
       path.style.setProperty('--n', side)
       paths.push(path)
     }
@@ -115,7 +119,12 @@ function inkOutline(sheet) {
     const sides = [[m, m, w - m, m], [w - m, m, w - m, h - m], [m, h - m, w - m, h - m], [m, m, m, h - m]]
     paths.forEach((path, i) => path.setAttribute('d', inkStroke(...sides[i >> 1], rand)))
   }
-  new ResizeObserver(draw).observe(sheet)
+  let settle = 0
+  new ResizeObserver(() => {
+    clearTimeout(settle)
+    if (!svg.hasAttribute('viewBox')) draw()
+    else settle = setTimeout(draw, 150)
+  }).observe(sheet)
   draw()
 }
 
