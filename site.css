@@ -196,6 +196,10 @@ body.bag-open { overflow: hidden; }
 .bag .note:empty { display: none; }
 @media (max-width: 760px) {
   .bag-drawer { width: 100%; }
+  .cart-link {
+    top: calc(env(safe-area-inset-top, 0px) + 36px + var(--logo-h) / 2 - 11px);
+    padding-bottom: 0;
+  }
 }
 .cart-link:hover, .cart-link[aria-current="page"] { color: var(--ink-soft); }
 .about {
@@ -341,19 +345,12 @@ body.bag-open { overflow: hidden; }
   font-size: 20px;
 }
 .site-foot {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  column-gap: clamp(32px, 10vw, 160px);
+  display: flex;
+  justify-content: flex-end;
   margin-top: clamp(96px, 16vh, 180px);
 }
-.foot-logo img {
-  display: block;
-  width: min(168px, 38vw);
-  height: auto;
-}
 .foot-nav {
-  margin: 0 0 -6px;
+  margin: 0;
   font-size: 17px;
   line-height: 1.35;
 }
