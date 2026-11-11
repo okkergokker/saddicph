@@ -13,8 +13,8 @@ const CART_FIELDS = `
           ... on ProductVariant {
             id
             title
-            image { url altText }
-            product { title handle featuredImage { url altText } }
+            image { url(transform: { maxWidth: 240 }) altText }
+            product { title handle featuredImage { url(transform: { maxWidth: 240 }) altText } }
             price { amount currencyCode }
           }
         }
@@ -231,7 +231,14 @@ async function fetchProducts() {
           handle
           descriptionHtml
           availableForSale
-          featuredImage { url altText width height }
+          featuredImage {
+            url altText width height
+            w480: url(transform: { maxWidth: 480 })
+            w720: url(transform: { maxWidth: 720 })
+            w960: url(transform: { maxWidth: 960 })
+            w1440: url(transform: { maxWidth: 1440 })
+            w2048: url(transform: { maxWidth: 2048 })
+          }
           priceRange { minVariantPrice { amount currencyCode } }
           variants(first: 20) {
             edges { node { id title availableForSale price { amount currencyCode } } }
@@ -279,6 +286,19 @@ async function removeLine(cart, lineId) {
   return remember(data.cartLinesRemove.cart)
 }
 
+// Product photos come in several Shopify-resized widths, so a phone downloads and decodes an
+// image close to its ~320px slot instead of the full original. Smaller decoded images also keep
+// scrolling light under the blurred cart sheet, which re-blurs whatever is beneath it.
+const PRODUCT_SIZES = '(max-width: 760px) calc(100vw - 56px), min(70vw, 1080px)'
+function productImageAttrs(image) {
+  const sized = [[480, image.w480], [720, image.w720], [960, image.w960], [1440, image.w1440], [2048, image.w2048]]
+    .filter(([width, url]) => url && (!image.width || width < image.width))
+  if (image.width) sized.push([image.width, image.url])
+  const srcset = sized.map(([width, url]) => text(url) + ' ' + width + 'w').join(', ')
+  return ' src="' + text(image.w960 || image.url) + '"' +
+    (srcset ? ' srcset="' + srcset + '" sizes="' + PRODUCT_SIZES + '"' : '')
+}
+
 function renderFront(products, root) {
   if (!products.length) {
     root.innerHTML = '<p class="status">There are no products yet.</p>'
@@ -299,7 +319,7 @@ function renderFront(products, root) {
         '<p class="note" role="status"></p>'
       : ''
     return '<article class="product">' +
-      (image ? '<img src="' + text(image.url) + '" alt="' + text(image.altText || product.title) + '"' + size + loading + ' decoding="async">' : '') +
+      (image ? '<img' + productImageAttrs(image) + ' alt="' + text(image.altText || product.title) + '"' + size + loading + ' decoding="async">' : '') +
       '<div class="details"><h1>' + text(product.title) + '</h1>' +
       '<p class="price">' + money(price.amount, price.currencyCode) + '</p>' +
       '<p class="tax">Tax included. Shipping calculated at checkout.</p>' +
