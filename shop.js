@@ -165,12 +165,12 @@ function revealProducts(root) {
   revealOnScroll(products)
 }
 
-function setQuantity(qty, value) {
+function setQuantity(qty, value, animate = true) {
   const next = Math.min(99, Math.max(1, value))
   const count = qty.querySelector('.qty-count')
   const previous = Number(count.textContent)
   count.textContent = String(next)
-  if (next !== previous) replay(count, next > previous ? 'tick-up' : 'tick-down', 'tick-up', 'tick-down')
+  if (animate && next !== previous) replay(count, next > previous ? 'tick-up' : 'tick-down', 'tick-up', 'tick-down')
   qty.querySelector('.qty-less').disabled = next <= 1
   qty.querySelector('.qty-more').disabled = next >= 99
 }
@@ -289,32 +289,37 @@ function renderFront(products, root) {
   }).join('')
 }
 
+function cartLineHtml(line, index) {
+  const item = line.merchandise
+  const image = (item.image && item.image.url) || (item.product.featuredImage && item.product.featuredImage.url) || ''
+  const alt = (item.image && item.image.altText) || item.product.title
+  const variant = item.title && item.title !== 'Default Title' ? '<p class="meta">Size: ' + text(item.title) + '</p>' : ''
+  const less = line.quantity <= 1 ? ' disabled' : ''
+  const more = line.quantity >= 99 ? ' disabled' : ''
+  return '<article class="line" data-line="' + text(line.id) + '" style="--i:' + Math.min(index, 6) + '">' +
+    (image ? '<img src="' + text(image) + '" alt="' + text(alt) + '">' : '<span></span>') +
+    '<div><h2>' + text(item.product.title) + '</h2>' + variant +
+    '<p class="meta">' + money(item.price.amount, item.price.currencyCode) + '</p>' +
+    '<div class="qty-row"><span>quantity:</span><span class="bag-count">' + line.quantity + '</span>' +
+    '<button class="bag-qty bag-less" type="button" data-line="' + text(line.id) + '" aria-label="Decrease quantity"' + less + '>−</button>' +
+    '<button class="bag-qty bag-more" type="button" data-line="' + text(line.id) + '" aria-label="Increase quantity"' + more + '>+</button></div>' +
+    '<button class="bag-remove" type="button" data-line="' + text(line.id) + '">remove</button></div></article>'
+}
+
+function cartTotal(cart) {
+  const total = cart.cost.subtotalAmount || cart.cost.totalAmount
+  return money(total.amount, total.currencyCode)
+}
+
 function renderCart(cart, root) {
   const lines = linesOf(cart)
   if (!lines.length) {
     root.innerHTML = '<p class="status">Your cart is empty.</p>'
     return
   }
-  const rows = lines.map((line, index) => {
-    const item = line.merchandise
-    const image = (item.image && item.image.url) || (item.product.featuredImage && item.product.featuredImage.url) || ''
-    const alt = (item.image && item.image.altText) || item.product.title
-    const variant = item.title && item.title !== 'Default Title' ? '<p class="meta">Size: ' + text(item.title) + '</p>' : ''
-    const less = line.quantity <= 1 ? ' disabled' : ''
-    const more = line.quantity >= 99 ? ' disabled' : ''
-    return '<article class="line" style="--i:' + Math.min(index, 6) + '">' +
-      (image ? '<img src="' + text(image) + '" alt="' + text(alt) + '">' : '<span></span>') +
-      '<div><h2>' + text(item.product.title) + '</h2>' + variant +
-      '<p class="meta">' + money(item.price.amount, item.price.currencyCode) + '</p>' +
-      '<div class="qty-row"><span>quantity:</span><span class="bag-count">' + line.quantity + '</span>' +
-      '<button class="bag-qty bag-less" type="button" data-line="' + text(line.id) + '" aria-label="Decrease quantity"' + less + '>−</button>' +
-      '<button class="bag-qty bag-more" type="button" data-line="' + text(line.id) + '" aria-label="Increase quantity"' + more + '>+</button></div>' +
-      '<button class="bag-remove" type="button" data-line="' + text(line.id) + '">remove</button></div></article>'
-  }).join('')
-  const total = cart.cost.subtotalAmount || cart.cost.totalAmount
-  root.innerHTML = '<div class="bag-items">' + rows + '</div>' +
+  root.innerHTML = '<div class="bag-items">' + lines.map(cartLineHtml).join('') + '</div>' +
     '<div class="bag-foot">' +
-    '<div class="subtotal"><span>Subtotal</span><span>' + money(total.amount, total.currencyCode) + '</span></div>' +
+    '<div class="subtotal"><span>Subtotal</span><span class="bag-total">' + cartTotal(cart) + '</span></div>' +
     '<p class="tax">Taxes included. Shipping calculated at checkout.</p>' +
     '<a class="checkout" href="' + text(cart.checkoutUrl) + '">Check out</a>' +
     '<p class="note" role="status"></p></div>'
@@ -323,9 +328,8 @@ function renderCart(cart, root) {
 function scrollHomeMark() {
   const mark = document.querySelector('.logo-s')
   if (!mark) return
-  mark.addEventListener('click', (event) => {
+  mark.addEventListener('click', () => {
     if (window.scrollY <= 0) return
-    event.preventDefault()
     window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
   })
 }
@@ -347,6 +351,114 @@ async function boot() {
     const isBagOpen = () => bag.classList.contains('is-open')
     const drawer = bag.querySelector('.bag-drawer')
     inkOutline(drawer)
+    const easeSoft = 'cubic-bezier(.4, 0, .2, 1)'
+    const toElement = (html) => {
+      const template = document.createElement('template')
+      template.innerHTML = html
+      return template.content.firstElementChild
+    }
+    // Fades a line out, then folds its height away so the lines below slide up.
+    // Exit animations can start before Shopify answers (see the remove click), so they are
+    // remembered and reused instead of restarted; a cancelled one resolves rather than rejects.
+    const leaving = new WeakMap()
+    const collapseLine = (line) => {
+      if (leaving.has(line)) return leaving.get(line)
+      const height = line.offsetHeight + 'px'
+      const { paddingBottom: pad, opacity } = getComputedStyle(line)
+      line.style.overflow = 'hidden'
+      const done = line.animate([
+        { opacity, height, paddingBottom: pad },
+        { opacity: 0, height, paddingBottom: pad, offset: 0.35 },
+        { opacity: 0, height: '0px', paddingBottom: '0px' },
+      ], { duration: 600, easing: easeSoft, fill: 'forwards' }).finished.catch(() => {})
+      leaving.set(line, done)
+      return done
+    }
+    let panelLeaving = null
+    const fadePanelOut = () => panelLeaving || (panelLeaving = bagPanel.animate(
+      [{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: easeSoft, fill: 'forwards' }).finished.catch(() => {}))
+    const undoLeaving = (line) => {
+      bagPanel.getAnimations().forEach((animation) => animation.cancel())
+      panelLeaving = null
+      if (!line) return
+      line.getAnimations().forEach((animation) => animation.cancel())
+      leaving.delete(line)
+      line.style.overflow = ''
+    }
+    // The reverse: opens room for a new line, then lets it settle in.
+    const expandLine = (line) => {
+      const height = line.offsetHeight + 'px'
+      const pad = getComputedStyle(line).paddingBottom
+      line.style.overflow = 'hidden'
+      line.animate([
+        { opacity: 0, height: '0px', paddingBottom: '0px', transform: 'translateY(10px)' },
+        { opacity: 0, height, paddingBottom: pad, transform: 'translateY(10px)', offset: 0.45 },
+        { opacity: 1, height, paddingBottom: pad, transform: 'none' },
+      ], { duration: 900, easing: easeSoft }).finished.then(() => { line.style.overflow = '' })
+    }
+    // Swaps the whole panel (empty message <-> list) behind a soft fade, easing the sheet height.
+    const fadeSwap = async () => {
+      await fadePanelOut()
+      panelLeaving = null
+      const before = drawer.offsetHeight
+      drawBag()
+      const after = drawer.offsetHeight
+      bagPanel.getAnimations().forEach((animation) => animation.cancel())
+      if (after !== before) drawer.animate([{ height: before + 'px' }, { height: after + 'px' }], { duration: 750, easing: 'cubic-bezier(.45, 0, .2, 1)' })
+      bagPanel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 450, easing: 'cubic-bezier(.2, .7, .2, 1)' })
+    }
+    // Brings the open cart up to date in place, so lines that stay keep their images and
+    // nothing flashes: removed lines fold away, new ones open up, numbers tick.
+    const patchBag = async () => {
+      bagPanel.classList.remove('bag-enter')
+      if (!isBagOpen() || prefersReducedMotion()) {
+        drawBag()
+        return
+      }
+      const lines = linesOf(cart)
+      const items = bagPanel.querySelector('.bag-items')
+      // Switching between the empty message and the list (incl. removing the last line) is
+      // one soft crossfade, so the list and its totals leave together.
+      if (!items || !lines.length) {
+        await fadeSwap()
+        return
+      }
+      const total = bagPanel.querySelector('.bag-total')
+      if (total && total.textContent !== cartTotal(cart)) {
+        total.textContent = cartTotal(cart)
+        replay(total, 'tick-up', 'tick-down')
+      }
+      const checkout = bagPanel.querySelector('.checkout')
+      if (checkout) checkout.href = cart.checkoutUrl
+      const lineElement = (lineId) => [...items.querySelectorAll('.line')].find((node) => node.dataset.line === lineId)
+      const keep = new Set(lines.map((line) => line.id))
+      const gone = [...items.querySelectorAll('.line')].filter((element) => !keep.has(element.dataset.line))
+      lines.forEach((line, index) => {
+        let element = lineElement(line.id)
+        if (!element) {
+          element = toElement(cartLineHtml(line, index))
+          const previous = index ? lineElement(lines[index - 1].id) : null
+          items.insertBefore(element, previous ? previous.nextSibling : items.firstChild)
+          expandLine(element)
+          if (element.offsetTop + element.offsetHeight > items.scrollTop + items.clientHeight) {
+            items.scrollTo({ top: items.scrollHeight, behavior: 'smooth' })
+          }
+          return
+        }
+        const count = element.querySelector('.bag-count')
+        const previous = Number(count.textContent)
+        if (previous !== line.quantity) {
+          count.textContent = String(line.quantity)
+          replay(count, line.quantity > previous ? 'tick-up' : 'tick-down', 'tick-up', 'tick-down')
+        }
+        element.querySelector('.bag-less').disabled = line.quantity <= 1
+        element.querySelector('.bag-more').disabled = line.quantity >= 99
+        element.querySelector('.bag-remove').disabled = false
+        element.classList.remove('is-busy')
+      })
+      await Promise.all(gone.map(collapseLine))
+      gone.forEach((element) => element.remove())
+    }
     // The cart sheet is a non-modal dropdown: the page keeps scrolling and stays usable.
     drawer.setAttribute('aria-modal', 'false')
     // There is no close button, so keyboard opens move focus to the sheet itself.
@@ -404,8 +516,10 @@ async function boot() {
     })
     // A tap or click anywhere outside the sheet (other than Cart, which toggles) closes it.
     // Scrolling never fires a click, so the page can be scrolled with the cart open.
+    // Adding to the cart (and picking a quantity for it) keeps the cart open to show the change.
     document.addEventListener('click', (event) => {
       if (!isBagOpen() || drawer.contains(event.target) || bagButton.contains(event.target)) return
+      if (event.target.closest('.to-basket, .qty')) return
       setBagOpen(false, event.detail === 0)
     })
     bag.addEventListener('click', async (event) => {
@@ -415,7 +529,13 @@ async function boot() {
       if (!button || !cart) return
       const line = button.closest('.line')
       button.disabled = true
-      if (line) line.classList.add('is-busy')
+      // Removing starts its exit right away instead of dimming and waiting for Shopify:
+      // the last line takes the whole panel with it, any other line folds away.
+      const exitNow = remove && line && isBagOpen() && !prefersReducedMotion()
+      if (exitNow) {
+        if (bagPanel.querySelectorAll('.line').length === 1) fadePanelOut()
+        else collapseLine(line)
+      } else if (line) line.classList.add('is-busy')
       try {
         if (remove) cart = await removeLine(cart, button.dataset.line)
         else {
@@ -423,8 +543,9 @@ async function boot() {
           const next = Math.min(99, count + (button.classList.contains('bag-more') ? 1 : -1))
           if (next !== count) cart = await updateLine(cart, button.dataset.line, next)
         }
-        drawBag()
+        await patchBag()
       } catch (error) {
+        if (exitNow) undoLeaving(line)
         button.disabled = false
         if (line) line.classList.remove('is-busy')
         const note = bagPanel.querySelector('.note')
@@ -435,11 +556,6 @@ async function boot() {
     revealProducts(root)
     const footer = document.querySelector('.site-foot')
     if (footer) revealOnScroll([footer])
-    const labelTimers = new WeakMap()
-    const setLabel = (button, label) => {
-      button.textContent = label
-      replay(button, 'label-swap')
-    }
     root.addEventListener('click', async (event) => {
       const step = event.target.closest('.qty-more, .qty-less')
       if (step) {
@@ -453,20 +569,15 @@ async function boot() {
       const details = button.closest('.details')
       const note = details.querySelector('.note')
       const quantity = Number(details.querySelector('.qty-count').textContent) || 1
-      clearTimeout(labelTimers.get(button))
       button.disabled = true
       button.classList.add('is-busy')
-      setLabel(button, 'Adding…')
       if (note) note.textContent = ''
       try {
         cart = await addVariant(cart, button.dataset.variant, quantity)
-        setQuantity(details.querySelector('.qty'), 1)
-        if (isBagOpen()) drawBag()
-        setLabel(button, 'Added')
+        setQuantity(details.querySelector('.qty'), 1, false)
+        if (isBagOpen()) patchBag()
         replay(bagButton, 'bump')
-        labelTimers.set(button, setTimeout(() => setLabel(button, 'Add to cart'), 1800))
       } catch (error) {
-        setLabel(button, 'Add to cart')
         if (note) note.textContent = error.message
       }
       button.classList.remove('is-busy')
