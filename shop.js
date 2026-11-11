@@ -299,7 +299,7 @@ async function boot() {
         if (fromKeyboard) bagButton.focus({ preventScroll: true })
         else document.activeElement.blur()
       }
-      const closeMs = prefersReducedMotion() ? 0 : (parseFloat(getComputedStyle(bag).getPropertyValue('--bag-close-ms')) || 920) + 120
+      const closeMs = prefersReducedMotion() ? 0 : (parseFloat(getComputedStyle(bag).getPropertyValue('--bag-close-ms')) || 1400) + 120
       bagCloseTimer = setTimeout(finishClose, closeMs)
     }
     // A click with detail 0 comes from the keyboard or assistive tech, not a pointer.
