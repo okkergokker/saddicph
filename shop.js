@@ -89,17 +89,24 @@ function inkStroke(x1, y1, x2, y2, rand, ref) {
   return d + 'L' + point(len + after)
 }
 
+// Two SVGs: the top and side strokes fill the sheet, while the bottom stroke lives in its own
+// short strip pinned to the sheet's bottom edge. When the cart's contents change, the sheet's
+// bottom edge glides with transforms only (see morphSheet in boot): the bottom strip rides that
+// edge, and the top/side layer is returned so it can be held still with the content.
 // Paths are created once and only their shape is updated on resize, so a resize during the
-// draw-in does not restart it. The outline is redrawn at the sheet's true size on every resize,
-// including every frame while the sheet's height animates (a line folding away or opening up).
-// It is never stretched: stretching moved the bottom stroke and corner crossings, and the
-// redraw after it snapped the side strokes into a new shape. Because inkStroke's shape does not
-// depend on length, these per-frame redraws leave every stroke still except the moving bottom.
+// draw-in does not restart it. The outline is never stretched, and since inkStroke's shape does
+// not depend on length, a redraw at a new height only lengthens or shortens the side strokes.
+const INK_BOTTOM_H = 24
 function inkOutline(sheet) {
-  const svg = document.createElementNS(SVG_NS, 'svg')
-  svg.setAttribute('class', 'bag-outline')
-  svg.setAttribute('aria-hidden', 'true')
-  svg.setAttribute('preserveAspectRatio', 'none')
+  const makeSvg = (cls) => {
+    const svg = document.createElementNS(SVG_NS, 'svg')
+    svg.setAttribute('class', cls)
+    svg.setAttribute('aria-hidden', 'true')
+    svg.setAttribute('preserveAspectRatio', 'none')
+    return svg
+  }
+  const svg = makeSvg('bag-outline')
+  const bottom = makeSvg('bag-outline bag-outline-bottom')
   const paths = []
   for (let side = 0; side < 4; side++) {
     for (const cls of ['ink', 'ink-echo']) {
@@ -109,23 +116,26 @@ function inkOutline(sheet) {
       path.setAttribute('vector-effect', 'non-scaling-stroke')
       path.style.setProperty('--n', side)
       paths.push(path)
+      ;(side === 2 ? bottom : svg).append(path)
     }
   }
-  svg.append(...paths)
-  sheet.prepend(svg)
+  sheet.prepend(svg, bottom)
   const draw = () => {
     const w = sheet.clientWidth
     const h = sheet.clientHeight
     if (!w || !h) return
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+    bottom.setAttribute('viewBox', `0 0 ${w} ${INK_BOTTOM_H}`)
+    // All eight strokes come from one seeded sequence in a fixed order, so the hand never changes.
     const rand = seededRandom(23)
     const m = 8
+    const yb = INK_BOTTOM_H - m
     // Horizontal strokes spread their tilt over their own (height-independent) length; the
     // side strokes use a fixed reference so a height change never re-tilts them.
     const sides = [
       [m, m, w - m, m, w - 2 * m],
       [w - m, m, w - m, h - m, 400],
-      [m, h - m, w - m, h - m, w - 2 * m],
+      [m, yb, w - m, yb, w - 2 * m],
       [m, m, m, h - m, 400],
     ]
     paths.forEach((path, i) => {
@@ -134,9 +144,10 @@ function inkOutline(sheet) {
     })
   }
   // ResizeObserver runs after layout and before paint, so each redraw lands in the same frame
-  // as the size change.
+  // as the size change. During a contents change it fires at most at the start and the end.
   new ResizeObserver(draw).observe(sheet)
   draw()
+  return svg
 }
 
 // The production CSS minifier rewrites times like 1400ms as 1.4s (and may drop the unit on 0).
@@ -390,77 +401,130 @@ async function boot() {
     }
     const isBagOpen = () => bag.classList.contains('is-open')
     const drawer = bag.querySelector('.bag-drawer')
-    inkOutline(drawer)
+    const inkLayer = inkOutline(drawer)
     const easeSoft = 'cubic-bezier(.4, 0, .2, 1)'
+    const easeMorph = 'cubic-bezier(.32, .72, 0, 1)'
+    const MORPH_MS = 750
     const toElement = (html) => {
       const template = document.createElement('template')
       template.innerHTML = html
       return template.content.firstElementChild
     }
-    // Fades a line out, then folds its height away so the lines below slide up.
-    // Exit animations can start before Shopify answers (see the remove click), so they are
-    // remembered and reused instead of restarted; a cancelled one resolves rather than rejects.
-    const leaving = new WeakMap()
-    const collapseLine = (line) => {
-      if (leaving.has(line)) return leaving.get(line)
-      const height = line.offsetHeight + 'px'
-      const { paddingBottom: pad, opacity } = getComputedStyle(line)
-      line.style.overflow = 'hidden'
-      const done = line.animate([
-        { opacity, height, paddingBottom: pad },
-        { opacity: 0, height, paddingBottom: pad, offset: 0.35 },
-        { opacity: 0, height: '0px', paddingBottom: '0px' },
-      ], { duration: 600, easing: easeSoft, fill: 'forwards' }).finished.catch(() => {})
-      leaving.set(line, done)
-      return done
+    // ---- Contents changes, animated like the open/close roll: transform and opacity only ----
+    // Nothing animates height or padding (that re-lays out, redraws the ink and re-blurs the
+    // glass every frame on a phone). Instead:
+    // - The sheet is held at the taller of its old and new height by extra padding-bottom (which
+    //   grows the box without moving its children, unlike a fixed height that would stretch the
+    //   flex/grid list), slid up behind .bag's top clip so its visible bottom edge sits where it
+    //   was, then glides to the new edge. The content and the top/side ink slide down by the
+    //   same amount, so they stand still, exactly like the roll. The bottom ink strip rides the
+    //   edge.
+    // - Every line, the foot and the status message that stays slides from where it was to
+    //   where it now sits (FLIP); new ones fade and rise in.
+    // The reserve is released and all fill-forwards animations cancelled in the same task when
+    // the glide ends, so the hand-over to the plain layout cannot show a jump.
+    const pieces = () => [...bagPanel.querySelectorAll('.line, .bag-foot, #bag-panel > .status')]
+    let morph = null
+    const endMorph = () => {
+      if (!morph) return
+      const { animations, items } = morph
+      morph = null
+      drawer.style.paddingBottom = ''
+      if (items) items.style.overflow = ''
+      animations.forEach((animation) => animation.cancel())
     }
-    let panelLeaving = null
-    const fadePanelOut = () => panelLeaving || (panelLeaving = bagPanel.animate(
-      [{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: easeSoft, fill: 'forwards' }).finished.catch(() => {}))
-    const undoLeaving = (line) => {
-      bagPanel.getAnimations().forEach((animation) => animation.cancel())
-      panelLeaving = null
-      if (!line) return
-      line.getAnimations().forEach((animation) => animation.cancel())
-      leaving.delete(line)
-      line.style.overflow = ''
+    const morphSheet = (mutate) => {
+      if (!isBagOpen() || prefersReducedMotion()) {
+        endMorph()
+        mutate()
+        return Promise.resolve()
+      }
+      // Where everything is on screen right now, including a morph still in flight.
+      const bagTop = bag.getBoundingClientRect().top
+      const fromBottom = drawer.getBoundingClientRect().bottom - bagTop
+      const from = new Map(pieces().map((el) => [el, el.getBoundingClientRect().top]))
+      // While the sheet is still rolling open or shut, its CSS transitions own the transforms
+      // (and would override these), so only the pieces glide and the edge simply follows.
+      const rolling = [drawer, bagPanel].some((el) => el.getAnimations().some(
+        (animation) => animation instanceof CSSTransition && animation.transitionProperty === 'transform'))
+      endMorph()
+      mutate()
+      const toBottom = drawer.offsetHeight
+      const glideEdge = !rolling && Math.abs(fromBottom - toBottom) > 0.5
+      const held = glideEdge ? Math.max(fromBottom, toBottom) : toBottom
+      const reserve = held - toBottom
+      if (reserve > 0.5) drawer.style.paddingBottom = parseFloat(getComputedStyle(drawer).paddingBottom) + reserve + 'px'
+      // The list clips its children; lines sliding up from below must stay visible on the way.
+      const items = bagPanel.querySelector('.bag-items')
+      const scrolls = items && items.scrollHeight > items.clientHeight + 1
+      if (items && !scrolls) items.style.overflow = 'visible'
+      // Final layout positions, measured before any new transform is applied.
+      const to = new Map(pieces().map((el) => [el, el.getBoundingClientRect().top]))
+      const timing = { duration: MORPH_MS, easing: easeMorph, fill: 'forwards' }
+      const animations = []
+      const lift = (y) => `translateY(${y}px)`
+      if (glideEdge) {
+        animations.push(drawer.animate([{ transform: lift(fromBottom - held) }, { transform: lift(toBottom - held) }], timing))
+        for (const layer of [bagPanel, inkLayer]) {
+          animations.push(layer.animate([{ transform: lift(held - fromBottom) }, { transform: lift(held - toBottom) }], timing))
+        }
+      }
+      to.forEach((top, el) => {
+        if (from.has(el)) {
+          const dy = from.get(el) - top
+          if (Math.abs(dy) > 0.5) animations.push(el.animate([{ transform: lift(dy) }, { transform: 'none' }], timing))
+        } else {
+          // fill 'both' keeps a new piece hidden during its short delay, not just after it.
+          animations.push(el.animate(
+            [{ opacity: 0, transform: lift(12) }, { opacity: 1, transform: 'none' }],
+            { ...timing, delay: 120, fill: 'both' }))
+        }
+      })
+      const current = { animations, items: items && !scrolls ? items : null }
+      morph = current
+      if (!animations.length) {
+        endMorph()
+        return Promise.resolve()
+      }
+      return Promise.all(animations.map((animation) => animation.finished)).then(
+        () => { if (morph === current) endMorph() },
+        () => {},
+      )
     }
-    // The reverse: opens room for a new line, then lets it settle in.
-    const expandLine = (line) => {
-      const height = line.offsetHeight + 'px'
-      const pad = getComputedStyle(line).paddingBottom
-      line.style.overflow = 'hidden'
-      line.animate([
-        { opacity: 0, height: '0px', paddingBottom: '0px', transform: 'translateY(10px)' },
-        { opacity: 0, height, paddingBottom: pad, transform: 'translateY(10px)', offset: 0.45 },
-        { opacity: 1, height, paddingBottom: pad, transform: 'none' },
-      ], { duration: 900, easing: easeSoft }).finished.then(() => { line.style.overflow = '' })
+    // Exit animations: opacity plus an optional small drift. The drift is composited on top of
+    // any transform already running (a glide still in flight), so it never makes a line jump.
+    // A cancelled exit resolves rather than rejects.
+    const fadeOut = (el, drift = 0) => {
+      const opts = { duration: 240, easing: easeSoft, fill: 'forwards' }
+      const fade = el.animate([{ opacity: getComputedStyle(el).opacity }, { opacity: 0 }], opts)
+      if (drift) el.animate([{ transform: 'translate(0px, 0px)' }, { transform: `translate(${drift}px, -4px)` }], { ...opts, composite: 'add' })
+      return fade.finished.catch(() => {})
     }
-    // Swaps the whole panel (empty message <-> list) behind a soft fade, easing the sheet height.
-    const fadeSwap = async () => {
-      await fadePanelOut()
-      panelLeaving = null
-      const before = drawer.offsetHeight
-      drawBag()
-      const after = drawer.offsetHeight
-      bagPanel.getAnimations().forEach((animation) => animation.cancel())
-      if (after !== before) drawer.animate([{ height: before + 'px' }, { height: after + 'px' }], { duration: 750, easing: 'cubic-bezier(.45, 0, .2, 1)' })
-      bagPanel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 450, easing: 'cubic-bezier(.2, .7, .2, 1)' })
-    }
+    const clearPanelFade = () => bagPanel.getAnimations().forEach((animation) => {
+      if (animation.effect.getKeyframes().some((keyframe) => 'opacity' in keyframe)) animation.cancel()
+    })
+    const emptyHtml = '<p class="status">Your cart is empty.</p>'
     // Brings the open cart up to date in place, so lines that stay keep their images and
-    // nothing flashes: removed lines fold away, new ones open up, numbers tick.
+    // nothing flashes: numbers tick, lines that left fade and the rest glide together, new ones
+    // rise in.
     const patchBag = async () => {
       bagPanel.classList.remove('bag-enter')
       if (!isBagOpen() || prefersReducedMotion()) {
+        endMorph()
         drawBag()
         return
       }
       const lines = linesOf(cart)
       const items = bagPanel.querySelector('.bag-items')
-      // Switching between the empty message and the list (incl. removing the last line) is
-      // one soft crossfade, so the list and its totals leave together.
+      // Switching between the empty message and the list: the old content fades, then the
+      // sheet glides to the new content's height while it rises in.
       if (!items || !lines.length) {
-        await fadeSwap()
+        if (!items && !lines.length) return
+        await fadeOut(bagPanel)
+        await morphSheet(() => {
+          clearPanelFade()
+          drawBag()
+        })
         return
       }
       const total = bagPanel.querySelector('.bag-total')
@@ -473,16 +537,11 @@ async function boot() {
       const lineElement = (lineId) => [...items.querySelectorAll('.line')].find((node) => node.dataset.line === lineId)
       const keep = new Set(lines.map((line) => line.id))
       const gone = [...items.querySelectorAll('.line')].filter((element) => !keep.has(element.dataset.line))
+      const added = []
       lines.forEach((line, index) => {
-        let element = lineElement(line.id)
+        const element = lineElement(line.id)
         if (!element) {
-          element = toElement(cartLineHtml(line, index))
-          const previous = index ? lineElement(lines[index - 1].id) : null
-          items.insertBefore(element, previous ? previous.nextSibling : items.firstChild)
-          expandLine(element)
-          if (element.offsetTop + element.offsetHeight > items.scrollTop + items.clientHeight) {
-            items.scrollTo({ top: items.scrollHeight, behavior: 'smooth' })
-          }
+          added.push([line, index])
           return
         }
         const count = element.querySelector('.bag-count')
@@ -496,8 +555,21 @@ async function boot() {
         element.querySelector('.bag-remove').disabled = false
         element.classList.remove('is-busy')
       })
-      await Promise.all(gone.map(collapseLine))
-      gone.forEach((element) => element.remove())
+      if (!gone.length && !added.length) return
+      await Promise.all(gone.map((element) => fadeOut(element, 10)))
+      let newest = null
+      await morphSheet(() => {
+        gone.forEach((element) => element.remove())
+        added.forEach(([line, index]) => {
+          const element = toElement(cartLineHtml(line, index))
+          const previous = index ? lineElement(lines[index - 1].id) : null
+          items.insertBefore(element, previous ? previous.nextSibling : items.firstChild)
+          newest = element
+        })
+      })
+      if (newest && newest.offsetTop + newest.offsetHeight > items.scrollTop + items.clientHeight) {
+        items.scrollTo({ top: items.scrollHeight, behavior: 'smooth' })
+      }
     }
     // The cart sheet is a non-modal dropdown: the page keeps scrolling and stays usable.
     drawer.setAttribute('aria-modal', 'false')
@@ -528,6 +600,8 @@ async function boot() {
     const setBagOpen = (open, fromKeyboard = false) => {
       clearTimeout(bagCloseTimer)
       bagButton.setAttribute('aria-expanded', open ? 'true' : 'false')
+      // A contents glide in flight is settled first, so the sheet is measured at its real size.
+      endMorph()
       if (open) {
         // Reopening mid-close keeps the current height so the sheet reverses smoothly.
         const fromHidden = bag.hidden
@@ -569,13 +643,49 @@ async function boot() {
       if (!button || !cart) return
       const line = button.closest('.line')
       button.disabled = true
-      // Removing starts its exit right away instead of dimming and waiting for Shopify:
-      // the last line takes the whole panel with it, any other line folds away.
-      const exitNow = remove && line && isBagOpen() && !prefersReducedMotion()
-      if (exitNow) {
-        if (bagPanel.querySelectorAll('.line').length === 1) fadePanelOut()
-        else collapseLine(line)
-      } else if (line) line.classList.add('is-busy')
+      const showError = (error) => {
+        const note = bagPanel.querySelector('.note')
+        if (note) note.textContent = error.message
+      }
+      // Removing is optimistic: the line leaves at once instead of dimming while Shopify answers
+      // (waiting would leave a gap). The last line takes the whole panel with it. If Shopify
+      // refuses, the line comes back the same way.
+      if (remove && line && isBagOpen() && !prefersReducedMotion()) {
+        const request = removeLine(cart, button.dataset.line)
+        request.catch(() => {})
+        const last = bagPanel.querySelectorAll('.line').length === 1
+        const parent = line.parentNode
+        const next = line.nextSibling
+        if (last) {
+          await fadeOut(bagPanel)
+          morphSheet(() => {
+            clearPanelFade()
+            bagPanel.innerHTML = emptyHtml
+          })
+        } else {
+          await fadeOut(line, 10)
+          morphSheet(() => line.remove())
+        }
+        try {
+          cart = await request
+          await patchBag()
+        } catch (error) {
+          await morphSheet(() => {
+            if (last || !parent.isConnected) {
+              drawBag()
+              return
+            }
+            parent.insertBefore(line, next && next.parentNode === parent ? next : null)
+            // Only after reinserting: a detached element does not list its (finished, filled)
+            // exit animations, so cancelling first would leave the line invisible.
+            line.getAnimations().forEach((animation) => animation.cancel())
+          })
+          button.disabled = false
+          showError(error)
+        }
+        return
+      }
+      if (line) line.classList.add('is-busy')
       try {
         if (remove) cart = await removeLine(cart, button.dataset.line)
         else {
@@ -585,11 +695,9 @@ async function boot() {
         }
         await patchBag()
       } catch (error) {
-        if (exitNow) undoLeaving(line)
         button.disabled = false
         if (line) line.classList.remove('is-busy')
-        const note = bagPanel.querySelector('.note')
-        if (note) note.textContent = error.message
+        showError(error)
       }
     })
     renderFront(await fetchProducts(), root)
