@@ -458,6 +458,20 @@ html { scrollbar-gutter: stable; }
   transition: background-color .3s var(--ease-soft), color .3s var(--ease-soft);
 }
 
+/* Mobile: the fixed "S" gets a white, gap-filled backing plus a thin white edge so it
+   stays legible over product photos. The fill stays inside the S's own box (it ends
+   before "addí" starts), so at the top of the page it is white-on-white and invisible. */
+@media (max-width: 760px) {
+  .logo-s {
+    background: url("/logo-s-fill.png") no-repeat 0 0 / 100% 100%;
+    filter:
+      drop-shadow(1.5px 0 0 var(--wall))
+      drop-shadow(-1.5px 0 0 var(--wall))
+      drop-shadow(0 1.5px 0 var(--wall))
+      drop-shadow(0 -1.5px 0 var(--wall));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;
