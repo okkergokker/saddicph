@@ -74,18 +74,25 @@ header {
 /* Cart: a blurred blush sheet that folds down near the top of the page, inset by a small
    margin. z-index 4 keeps it above the page but under the fixed "S" and "Cart" (z-index 5),
    so Cart stays the toggle. It is not modal: the page keeps scrolling and stays clickable
-   (.bag lets pointer events through; only the sheet catches them). */
+   (.bag lets pointer events through; only the sheet catches them).
+   .bag starts at the top margin and clips, so the sheet can slide in from above it without
+   ever showing in the margin. */
 .bag {
   --gutter: clamp(28px, 4vw, 64px);
   --bag-inset: clamp(10px, 1.4vw, 20px);
+  --bag-radius: clamp(14px, 1.8vw, 22px);
   --edge-l: max(env(safe-area-inset-left, 0px), var(--bag-inset));
   --edge-r: max(env(safe-area-inset-right, 0px), var(--bag-inset));
   --content-l: max(env(safe-area-inset-left, 0px), var(--gutter));
   --content-r: max(env(safe-area-inset-right, 0px), var(--gutter));
   position: fixed;
-  inset: 0;
+  top: calc(env(safe-area-inset-top, 0px) + var(--bag-inset));
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 4;
   margin: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 .bag[hidden] { display: none; }
@@ -102,12 +109,14 @@ header {
    always reaches past the bottom of the S so the letter never hangs off its edge. */
 .bag-drawer {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + var(--bag-inset));
+  top: 0;
   right: var(--edge-r);
   left: var(--edge-l);
   z-index: 1;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--bag-radius);
   min-height: calc(36px + var(--logo-h) + 44px - var(--bag-inset));
   max-height: 80vh;
   max-height: min(80dvh, 820px);
@@ -482,53 +491,48 @@ html { scrollbar-gutter: stable; }
 .to-basket.is-busy:disabled { cursor: progress; }
 .details .to-basket.label-swap { animation: label-in .4s var(--ease-out); }
 
-/* Cart sheet folds down / up. clip-path sits on the blurred element itself: never put
-   opacity, filter or clip-path on .bag (an ancestor), or the backdrop blur has nothing
-   to sample and turns into flat pink. Negative side/bottom insets keep the soft shadow. */
-/* The blur and blush tint ramp up while the sheet unfolds and melt away as it folds up,
-   so the glass "condenses" instead of appearing at full strength. */
-/* On close the whole sheet fades out while it folds up. The fade (with blur and tint) uses
-   its own gentle, even curve so it never drops off abruptly mid-way. */
+/* Cart sheet rolls down / up.
+   Performance: only transform and opacity animate, so phones run it on the GPU. The blur and
+   tint stay constant (re-blurring at a changing radius every frame was the expensive part);
+   the glass "condenses" by fading in instead.
+   The roll is two opposite transforms on the same duration and curve: the sheet slides down
+   from above .bag's clip edge while its content slides up by the same distance (--sheet-h,
+   measured by shop.js), so the content stands still and the sheet's rounded lower edge sweeps
+   down over it. The extra 14px gives the content a slight lift in and out.
+   Never put opacity, filter, clip-path or mask on .bag (an ancestor of the blurred sheet):
+   the backdrop blur would have nothing to sample and turn into flat pink. */
 .bag-drawer {
-  clip-path: inset(0 -80px 100% -80px);
+  transform: translateY(calc(var(--sheet-h, 100vh) * -1));
   opacity: 0;
-  background-color: rgba(244, 216, 219, .12);
-  -webkit-backdrop-filter: blur(0px) saturate(1);
-  backdrop-filter: blur(0px) saturate(1);
-  transition:
-    clip-path 1.3s var(--ease-drawer-out),
-    opacity 1.3s var(--ease-fade),
-    -webkit-backdrop-filter 1.3s var(--ease-fade),
-    backdrop-filter 1.3s var(--ease-fade),
-    background-color 1.3s var(--ease-fade);
+  transition: transform 1.3s var(--ease-drawer-out), opacity 1.3s var(--ease-fade);
+  will-change: transform, opacity;
 }
-/* On close the content only lifts; its own fade waits until the very end, so the sheet's
-   fade is the single fade the eye sees (two stacked fades multiply into an abrupt drop). */
+/* On close the content's own fade waits until the very end, so the sheet's fade is the single
+   fade the eye sees (two stacked fades multiply into an abrupt drop). */
 .bag-head, #bag-panel {
   transition: opacity .25s linear 1.05s, transform 1.3s var(--ease-drawer-out);
 }
-.bag:not(.is-open) .bag-head, .bag:not(.is-open) #bag-panel { opacity: 0; transform: translateY(-14px); }
-.bag.is-open .bag-drawer {
-  clip-path: inset(0 -80px -120px -80px);
-  opacity: 1;
-  background-color: rgba(244, 216, 219, .6);
-  -webkit-backdrop-filter: blur(34px) saturate(1.2);
-  backdrop-filter: blur(34px) saturate(1.2);
-  transition:
-    clip-path .95s var(--ease-drawer-in),
-    opacity .4s var(--ease-soft),
-    -webkit-backdrop-filter 1.1s var(--ease-soft),
-    backdrop-filter 1.1s var(--ease-soft),
-    background-color .9s var(--ease-soft);
+.bag:not(.is-open) .bag-head, .bag:not(.is-open) #bag-panel {
+  opacity: 0;
+  transform: translateY(calc(var(--sheet-h, 100vh) - 14px));
 }
-/* Without backdrop-filter support, use a near-solid blush instead of a see-through tint. */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .bag-drawer, .bag.is-open .bag-drawer { background-color: rgba(247, 225, 227, .96); }
+.bag.is-open .bag-drawer {
+  transform: none;
+  opacity: 1;
+  transition: transform .95s var(--ease-drawer-in), opacity .8s var(--ease-soft);
 }
 .bag.is-open .bag-head, .bag.is-open #bag-panel {
   opacity: 1;
   transform: none;
-  transition: opacity .5s var(--ease-soft) .2s, transform .8s var(--ease-drawer-in) .2s;
+  transition: opacity .5s var(--ease-soft) .2s, transform .95s var(--ease-drawer-in);
+}
+/* Set by shop.js for one frame while it applies a new --sheet-h before opening. */
+.bag.is-measuring .bag-drawer,
+.bag.is-measuring .bag-head,
+.bag.is-measuring #bag-panel { transition: none !important; }
+/* Without backdrop-filter support, use a near-solid blush instead of a see-through tint. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .bag-drawer { background-color: rgba(247, 225, 227, .96); }
 }
 #bag-panel.bag-enter .line,
 #bag-panel.bag-enter .bag-foot,

@@ -285,21 +285,36 @@ async function boot() {
       bag.hidden = true
     }
     drawer.addEventListener('transitionend', (event) => {
-      // Safari may report the property as -webkit-clip-path.
-      if (event.target === drawer && event.propertyName.includes('clip-path')) finishClose()
+      if (event.target === drawer && event.propertyName === 'transform') finishClose()
     })
+    // The roll animation slides the sheet and its content by the sheet's own height
+    // (see .bag-drawer in site.css). Measured right before each open/close, since adding or
+    // removing items changes it. When opening, transitions are frozen while the new height is
+    // applied; otherwise the closed position would itself animate from the old height.
+    const measureSheet = (freeze = false) => {
+      if (freeze) bag.classList.add('is-measuring')
+      drawer.style.setProperty('--sheet-h', drawer.offsetHeight + 'px')
+      if (freeze) {
+        void drawer.offsetHeight
+        bag.classList.remove('is-measuring')
+      }
+    }
     // fromKeyboard: move focus only for keyboard/assistive use; on touch it can draw a focus ring.
     const setBagOpen = (open, fromKeyboard = false) => {
       clearTimeout(bagCloseTimer)
       bagButton.setAttribute('aria-expanded', open ? 'true' : 'false')
       if (open) {
+        // Reopening mid-close keeps the current height so the sheet reverses smoothly.
+        const fromHidden = bag.hidden
         drawBag(true)
         bag.hidden = false
+        if (fromHidden) measureSheet(true)
         void bag.offsetWidth
         bag.classList.add('is-open')
         if (fromKeyboard) bag.querySelector('.bag-close').focus({ preventScroll: true })
         return
       }
+      measureSheet()
       bag.classList.remove('is-open')
       if (bag.contains(document.activeElement)) {
         if (fromKeyboard) bagButton.focus({ preventScroll: true })
