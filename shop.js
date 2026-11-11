@@ -49,6 +49,76 @@ async function gql(query, variables) {
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
+// Seeded so the outline keeps the same hand every time it is redrawn.
+function seededRandom(seed) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+// One slightly uneven stroke from (x1, y1) to (x2, y2) that overshoots both ends a little.
+function inkStroke(x1, y1, x2, y2, rand) {
+  const len = Math.hypot(x2 - x1, y2 - y1)
+  const ux = (x2 - x1) / len
+  const uy = (y2 - y1) / len
+  const before = 2 + rand() * 4
+  const after = 2 + rand() * 4
+  const tilt = (rand() - 0.5) * 1.6
+  // A long gentle sway plus a finer tremor, both under a pixel or so.
+  const waves = [
+    [0.5 + rand() * 0.6, rand() * Math.PI * 2, len / (220 + rand() * 160)],
+    [0.2 + rand() * 0.25, rand() * Math.PI * 2, len / (45 + rand() * 30)],
+  ]
+  const total = before + len + after
+  const steps = Math.max(2, Math.round(total / 12))
+  let d = ''
+  for (let i = 0; i <= steps; i++) {
+    const s = -before + (total * i) / steps
+    const t = s / len
+    let off = tilt * t
+    for (const [amp, phase, cycles] of waves) off += amp * Math.sin(phase + t * cycles * Math.PI * 2)
+    d += `${i ? 'L' : 'M'}${(x1 + ux * s - uy * off).toFixed(1)} ${(y1 + uy * s + ux * off).toFixed(1)}`
+  }
+  return d
+}
+
+// Paths are created once and only their shape is updated on resize, so a resize during the
+// draw-in does not restart it.
+function inkOutline(sheet) {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('class', 'bag-outline')
+  svg.setAttribute('aria-hidden', 'true')
+  const paths = []
+  for (let side = 0; side < 4; side++) {
+    for (const cls of ['ink', 'ink-echo']) {
+      const path = document.createElementNS(SVG_NS, 'path')
+      path.setAttribute('class', cls)
+      path.setAttribute('pathLength', '100')
+      path.style.setProperty('--n', side)
+      paths.push(path)
+    }
+  }
+  svg.append(...paths)
+  sheet.prepend(svg)
+  const draw = () => {
+    const w = sheet.clientWidth
+    const h = sheet.clientHeight
+    if (!w || !h) return
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`)
+    const rand = seededRandom(23)
+    const m = 8
+    const sides = [[m, m, w - m, m], [w - m, m, w - m, h - m], [m, h - m, w - m, h - m], [m, m, m, h - m]]
+    paths.forEach((path, i) => path.setAttribute('d', inkStroke(...sides[i >> 1], rand)))
+  }
+  new ResizeObserver(draw).observe(sheet)
+  draw()
+}
+
 // The production CSS minifier rewrites times like 1400ms as 1.4s (and may drop the unit on 0).
 function cssTimeMs(value, fallback) {
   const match = String(value).trim().match(/^(\d*\.?\d+)(ms|s)?$/)
@@ -276,6 +346,7 @@ async function boot() {
     }
     const isBagOpen = () => bag.classList.contains('is-open')
     const drawer = bag.querySelector('.bag-drawer')
+    inkOutline(drawer)
     // The cart sheet is a non-modal dropdown: the page keeps scrolling and stays usable.
     drawer.setAttribute('aria-modal', 'false')
     // There is no close button, so keyboard opens move focus to the sheet itself.
