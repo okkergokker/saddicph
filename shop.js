@@ -47,9 +47,54 @@ async function gql(query, variables) {
   return payload.data
 }
 
+const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// Re-trigger a CSS animation by removing the class, forcing a reflow and adding it again.
+function replay(element, className, ...others) {
+  element.classList.remove(className, ...others)
+  void element.offsetWidth
+  element.classList.add(className)
+}
+
+function revealOnScroll(elements) {
+  if (!('IntersectionObserver' in window)) {
+    elements.forEach((element) => element.classList.add('is-in'))
+    return
+  }
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return
+      entry.target.classList.add('is-in')
+      observer.unobserve(entry.target)
+    })
+  }, { threshold: 0.08, rootMargin: '0px 0px -6% 0px' })
+  elements.forEach((element) => {
+    element.classList.add('reveal')
+    observer.observe(element)
+  })
+}
+
+function revealProducts(root) {
+  const products = [...root.querySelectorAll('.product')]
+  products.forEach((product) => {
+    const img = product.querySelector('img')
+    if (!img) return
+    const loaded = () => img.classList.add('is-loaded')
+    if (img.complete && img.naturalWidth) loaded()
+    else {
+      img.addEventListener('load', loaded, { once: true })
+      img.addEventListener('error', loaded, { once: true })
+    }
+  })
+  revealOnScroll(products)
+}
+
 function setQuantity(qty, value) {
   const next = Math.min(99, Math.max(1, value))
-  qty.querySelector('.qty-count').textContent = String(next)
+  const count = qty.querySelector('.qty-count')
+  const previous = Number(count.textContent)
+  count.textContent = String(next)
+  if (next !== previous) replay(count, next > previous ? 'tick-up' : 'tick-down', 'tick-up', 'tick-down')
   qty.querySelector('.qty-less').disabled = next <= 1
   qty.querySelector('.qty-more').disabled = next >= 99
 }
@@ -90,7 +135,7 @@ async function fetchProducts() {
           handle
           descriptionHtml
           availableForSale
-          featuredImage { url altText }
+          featuredImage { url altText width height }
           priceRange { minVariantPrice { amount currencyCode } }
           variants(first: 20) {
             edges { node { id title availableForSale price { amount currencyCode } } }
@@ -143,8 +188,12 @@ function renderFront(products, root) {
     root.innerHTML = '<p class="status">There are no products yet.</p>'
     return
   }
-  root.innerHTML = products.map((product) => {
+  root.innerHTML = products.map((product, index) => {
     const image = product.featuredImage
+    const size = image && image.width && image.height
+      ? ' width="' + Number(image.width) + '" height="' + Number(image.height) + '"'
+      : ''
+    const loading = index === 0 ? ' fetchpriority="high"' : ' loading="lazy"'
     const price = product.priceRange.minVariantPrice
     const variants = product.variants.edges.map((edge) => edge.node)
     const variant = variants.find((item) => item.availableForSale) || variants[0]
@@ -154,7 +203,7 @@ function renderFront(products, root) {
         '<p class="note" role="status"></p>'
       : ''
     return '<article class="product">' +
-      (image ? '<img src="' + text(image.url) + '" alt="' + text(image.altText || product.title) + '">' : '') +
+      (image ? '<img src="' + text(image.url) + '" alt="' + text(image.altText || product.title) + '"' + size + loading + ' decoding="async">' : '') +
       '<div class="details"><h1>' + text(product.title) + '</h1>' +
       '<p class="price">' + money(price.amount, price.currencyCode) + '</p>' +
       '<p class="tax">Tax included. Shipping calculated at checkout.</p>' +
@@ -170,14 +219,14 @@ function renderCart(cart, root) {
     root.innerHTML = '<p class="status">Your cart is empty.</p>'
     return
   }
-  const rows = lines.map((line) => {
+  const rows = lines.map((line, index) => {
     const item = line.merchandise
     const image = (item.image && item.image.url) || (item.product.featuredImage && item.product.featuredImage.url) || ''
     const alt = (item.image && item.image.altText) || item.product.title
     const variant = item.title && item.title !== 'Default Title' ? '<p class="meta">Size: ' + text(item.title) + '</p>' : ''
     const less = line.quantity <= 1 ? ' disabled' : ''
     const more = line.quantity >= 99 ? ' disabled' : ''
-    return '<article class="line">' +
+    return '<article class="line" style="--i:' + Math.min(index, 6) + '">' +
       (image ? '<img src="' + text(image) + '" alt="' + text(alt) + '">' : '<span></span>') +
       '<div><h2>' + text(item.product.title) + '</h2>' + variant +
       '<p class="meta">' + money(item.price.amount, item.price.currencyCode) + '</p>' +
@@ -201,7 +250,7 @@ function scrollHomeMark() {
   mark.addEventListener('click', (event) => {
     if (window.scrollY <= 0) return
     event.preventDefault()
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
   })
 }
 
@@ -214,14 +263,34 @@ async function boot() {
   try {
     let cart = await readCart()
     remember(cart)
-    const drawBag = () => renderCart(cart, bagPanel)
+    // enter=true staggers the lines in; plain redraws (qty/remove) must not replay it.
+    const drawBag = (enter = false) => {
+      bagPanel.classList.toggle('bag-enter', enter)
+      renderCart(cart, bagPanel)
+    }
+    const isBagOpen = () => bag.classList.contains('is-open')
+    let bagCloseTimer = 0
     const setBagOpen = (open) => {
-      bag.hidden = !open
+      clearTimeout(bagCloseTimer)
       document.body.classList.toggle('bag-open', open)
       bagButton.setAttribute('aria-expanded', open ? 'true' : 'false')
-      if (open) drawBag()
+      if (open) {
+        drawBag(true)
+        bag.hidden = false
+        void bag.offsetWidth
+        bag.classList.add('is-open')
+        bag.querySelector('.bag-close').focus({ preventScroll: true })
+        return
+      }
+      bag.classList.remove('is-open')
+      if (bag.contains(document.activeElement)) bagButton.focus({ preventScroll: true })
+      const closeMs = prefersReducedMotion() ? 0 : parseFloat(getComputedStyle(bag).getPropertyValue('--bag-close-ms')) || 480
+      bagCloseTimer = setTimeout(() => { bag.hidden = true }, closeMs)
     }
-    bagButton.addEventListener('click', () => setBagOpen(bag.hidden))
+    bagButton.addEventListener('click', () => setBagOpen(!isBagOpen()))
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && isBagOpen()) setBagOpen(false)
+    })
     bag.addEventListener('click', async (event) => {
       if (event.target.closest('.bag-close, .bag-shade')) {
         setBagOpen(false)
@@ -231,7 +300,9 @@ async function boot() {
       const remove = event.target.closest('.bag-remove')
       const button = step || remove
       if (!button || !cart) return
+      const line = button.closest('.line')
       button.disabled = true
+      if (line) line.classList.add('is-busy')
       try {
         if (remove) cart = await removeLine(cart, button.dataset.line)
         else {
@@ -242,11 +313,20 @@ async function boot() {
         drawBag()
       } catch (error) {
         button.disabled = false
+        if (line) line.classList.remove('is-busy')
         const note = bagPanel.querySelector('.note')
         if (note) note.textContent = error.message
       }
     })
     renderFront(await fetchProducts(), root)
+    revealProducts(root)
+    const footer = document.querySelector('.site-foot')
+    if (footer) revealOnScroll([footer])
+    const labelTimers = new WeakMap()
+    const setLabel = (button, label) => {
+      button.textContent = label
+      replay(button, 'label-swap')
+    }
     root.addEventListener('click', async (event) => {
       const step = event.target.closest('.qty-more, .qty-less')
       if (step) {
@@ -260,15 +340,23 @@ async function boot() {
       const details = button.closest('.details')
       const note = details.querySelector('.note')
       const quantity = Number(details.querySelector('.qty-count').textContent) || 1
+      clearTimeout(labelTimers.get(button))
       button.disabled = true
+      button.classList.add('is-busy')
+      setLabel(button, 'Adding…')
       if (note) note.textContent = ''
       try {
         cart = await addVariant(cart, button.dataset.variant, quantity)
         setQuantity(details.querySelector('.qty'), 1)
-        if (!bag.hidden) drawBag()
+        if (isBagOpen()) drawBag()
+        setLabel(button, 'Added')
+        replay(bagButton, 'bump')
+        labelTimers.set(button, setTimeout(() => setLabel(button, 'Add to cart'), 1800))
       } catch (error) {
+        setLabel(button, 'Add to cart')
         if (note) note.textContent = error.message
       }
+      button.classList.remove('is-busy')
       button.disabled = false
     })
   } catch (error) {

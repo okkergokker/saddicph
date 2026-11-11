@@ -354,3 +354,115 @@ body.bag-open { overflow: hidden; }
   font-size: 17px;
   line-height: 1.35;
 }
+
+/* ---------- Motion & finish ----------
+   Only leaf elements are animated: .wrap, header and body must never get a
+   transform, or the fixed "S", cart link and drawer lose their viewport anchor. */
+:root {
+  --ease-out: cubic-bezier(.2, .7, .2, 1);
+  --ease-soft: cubic-bezier(.4, 0, .2, 1);
+  --bag-close-ms: 480ms;
+}
+html { scrollbar-gutter: stable; }
+::selection { background: var(--ink); color: var(--wall); }
+:focus-visible { outline: 1.5px solid currentColor; outline-offset: 4px; }
+
+@keyframes rise-in { from { opacity: 0; transform: translateY(14px); } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes label-in { from { opacity: 0; transform: translateY(4px); } }
+@keyframes tick-up { from { opacity: 0; transform: translateY(7px); } }
+@keyframes tick-down { from { opacity: 0; transform: translateY(-7px); } }
+@keyframes count-bump {
+  0% { transform: none; }
+  35% { transform: translateY(-3px) scale(1.3); }
+  100% { transform: none; }
+}
+
+/* Intro: both logo halves share one identical animation so the seam stays clean. */
+.logo-s, .logo-rest { animation: rise-in 1.1s var(--ease-out) .1s both; }
+.about { animation: rise-in 1.1s var(--ease-out) .35s both; }
+.cart-link { animation: fade-in .9s var(--ease-soft) .6s both; }
+.status { animation: fade-in .6s var(--ease-soft) .3s backwards; }
+
+/* Underline that draws in from the left */
+.cart-link, .bag-close {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-origin: content-box;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition: color .3s var(--ease-soft), background-size .45s var(--ease-out);
+}
+.cart-link:hover, .cart-link[aria-expanded="true"], .bag-close:hover { background-size: 100% 1px; }
+.cart-count { display: inline-block; }
+.cart-link.bump .cart-count { animation: count-bump .6s var(--ease-out); }
+
+/* Product reveal (classes added by shop.js) */
+/* Transitions live on the .is-in state so hiding is instant and only the reveal animates. */
+.product.reveal img { opacity: 0; transform: translateY(28px); }
+.product.reveal.is-in img { transition: opacity 1.1s var(--ease-soft), transform 1.4s var(--ease-out); }
+.product.reveal.is-in img.is-loaded { opacity: 1; transform: none; }
+.product.reveal:not(.is-in) .details > * { opacity: 0; }
+.product.is-in .details > * { animation: rise-in .9s var(--ease-out) backwards; }
+.product.is-in .details > :nth-child(1) { animation-delay: .25s; }
+.product.is-in .details > :nth-child(2) { animation-delay: .33s; }
+.product.is-in .details > :nth-child(3) { animation-delay: .41s; }
+.product.is-in .details > :nth-child(4) { animation-delay: .49s; }
+.product.is-in .details > :nth-child(5) { animation-delay: .57s; }
+.product.is-in .details > :nth-child(n+6) { animation-delay: .65s; }
+.site-foot.reveal { opacity: 0; transform: translateY(10px); }
+.site-foot.reveal.is-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity .9s var(--ease-soft), transform .9s var(--ease-out);
+}
+
+/* Quantity + add to cart feedback */
+.qty-less, .qty-more { transition: opacity .25s var(--ease-soft), transform .2s var(--ease-out); }
+.qty-less:not(:disabled):hover, .qty-more:not(:disabled):hover { transform: scale(1.15); }
+.qty-less:not(:disabled):active, .qty-more:not(:disabled):active { transform: scale(.9); }
+.qty-count.tick-up { animation: tick-up .3s var(--ease-out); }
+.qty-count.tick-down { animation: tick-down .3s var(--ease-out); }
+.to-basket {
+  transition: color .3s var(--ease-soft), opacity .3s var(--ease-soft), text-underline-offset .3s var(--ease-out);
+}
+.to-basket:not(:disabled):hover { text-underline-offset: .3em; }
+.to-basket.is-busy:disabled { cursor: progress; }
+.details .to-basket.label-swap { animation: label-in .4s var(--ease-out); }
+
+/* Cart drawer */
+.bag-shade {
+  background: rgba(40, 10, 14, .32);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  opacity: 0;
+  transition: opacity var(--bag-close-ms) var(--ease-soft);
+}
+.bag-drawer {
+  box-shadow: -24px 0 60px rgba(40, 10, 14, .08);
+  transform: translateX(100%);
+  transition: transform var(--bag-close-ms) var(--ease-soft);
+}
+.bag.is-open .bag-shade { opacity: 1; transition-duration: .5s; }
+.bag.is-open .bag-drawer { transform: none; transition: transform .7s var(--ease-out); }
+#bag-panel.bag-enter .line,
+#bag-panel.bag-enter .bag-foot,
+#bag-panel.bag-enter > .status {
+  animation: rise-in .7s var(--ease-out) backwards;
+  animation-delay: calc(.18s + var(--i, 0) * 70ms);
+}
+#bag-panel.bag-enter .bag-foot { animation-delay: .3s; }
+.bag .line { transition: opacity .25s var(--ease-soft); }
+.bag .line.is-busy { opacity: .45; pointer-events: none; }
+.bag .checkout, .more, .add, .checkout, .remove {
+  transition: background-color .3s var(--ease-soft), color .3s var(--ease-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-delay: 0s !important;
+    transition-duration: .01ms !important;
+    transition-delay: 0s !important;
+  }
+}
