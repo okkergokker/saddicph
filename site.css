@@ -80,7 +80,6 @@ header {
 .bag {
   --gutter: clamp(28px, 4vw, 64px);
   --bag-inset: clamp(10px, 1.4vw, 20px);
-  --bag-feather: clamp(12px, 1.6vw, 22px);
   --edge-l: max(env(safe-area-inset-left, 0px), var(--bag-inset));
   --edge-r: max(env(safe-area-inset-right, 0px), var(--bag-inset));
   --content-l: max(env(safe-area-inset-left, 0px), var(--gutter));
@@ -124,20 +123,10 @@ header {
     calc(var(--content-r) - var(--edge-r))
     26px
     calc(var(--content-l) - var(--edge-l) + var(--s-w) + clamp(32px, 5vw, 80px));
-  background: rgba(244, 216, 219, .6);
-  -webkit-backdrop-filter: blur(34px) saturate(1.2);
-  backdrop-filter: blur(34px) saturate(1.2);
-  /* Feathered edges: the glass fades out over --bag-feather on every side (two gradients
-     intersected), so the sheet has no hard outline, also while it rolls. The mask sits on
-     the blurred element itself, never on an ancestor. */
-  -webkit-mask-image:
-    linear-gradient(to bottom, transparent, #000 var(--bag-feather), #000 calc(100% - var(--bag-feather)), transparent),
-    linear-gradient(to right, transparent, #000 var(--bag-feather), #000 calc(100% - var(--bag-feather)), transparent);
-  -webkit-mask-composite: source-in;
-  mask-image:
-    linear-gradient(to bottom, transparent, #000 var(--bag-feather), #000 calc(100% - var(--bag-feather)), transparent),
-    linear-gradient(to right, transparent, #000 var(--bag-feather), #000 calc(100% - var(--bag-feather)), transparent);
-  mask-composite: intersect;
+  background: rgba(255, 170, 202, .7);
+  -webkit-backdrop-filter: blur(34px) saturate(1.4);
+  backdrop-filter: blur(34px) saturate(1.4);
+  box-shadow: 0 28px 60px -30px rgba(107, 28, 35, .4);
   color: var(--ink);
   pointer-events: auto;
 }
@@ -160,22 +149,12 @@ header {
 }
 .bag-items::-webkit-scrollbar { display: none; }
 .bag-foot { align-self: start; }
-.bag-head {
-  order: 2;
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 18px;
-}
-.bag-close {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: inherit;
-  font: inherit;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-}
+/* No close button: the cart closes via Cart, a tap outside the sheet, or Escape.
+   (The button is still in index.html; it is hidden here.) */
+.bag-head { display: none; }
+/* Keyboard opens focus the sheet itself (tabindex -1, set by shop.js); it is a container,
+   not a control, so it gets no focus ring. */
+.bag-drawer:focus { outline: none; }
 .bag .status { font-size: 18px; }
 .bag .line {
   grid-template-columns: 92px minmax(0, 1fr);
@@ -452,7 +431,7 @@ html { scrollbar-gutter: stable; }
 .status { animation: fade-in .6s var(--ease-soft) .3s backwards; }
 
 /* Underline that draws in from the left */
-.cart-link, .bag-close {
+.cart-link {
   background-image: linear-gradient(currentColor, currentColor);
   background-repeat: no-repeat;
   background-origin: content-box;
@@ -462,7 +441,7 @@ html { scrollbar-gutter: stable; }
 }
 /* Hover-only: on touch screens :hover sticks after a tap and the line would linger. */
 @media (hover: hover) {
-  .cart-link:hover, .bag-close:hover { background-size: 100% 1px; }
+  .cart-link:hover { background-size: 100% 1px; }
 }
 .cart-count { display: inline-block; }
 .cart-link.bump .cart-count { animation: count-bump .6s var(--ease-out); }
@@ -506,7 +485,7 @@ html { scrollbar-gutter: stable; }
    the glass "condenses" by fading in instead.
    The roll is two opposite transforms on the same duration and curve: the sheet slides down
    from above .bag's clip edge while its content slides up by the same distance (--sheet-h,
-   measured by shop.js), so the content stands still and the sheet's feathered lower edge sweeps
+   measured by shop.js), so the content stands still and the sheet's lower edge sweeps
    down over it. The extra 14px gives the content a slight lift in and out.
    Never put opacity, filter, clip-path or mask on .bag (an ancestor of the blurred sheet):
    the backdrop blur would have nothing to sample and turn into flat pink. */
@@ -518,10 +497,10 @@ html { scrollbar-gutter: stable; }
 }
 /* On close the content's own fade waits until the very end, so the sheet's fade is the single
    fade the eye sees (two stacked fades multiply into an abrupt drop). */
-.bag-head, #bag-panel {
+#bag-panel {
   transition: opacity .25s linear 1.05s, transform 1.3s var(--ease-drawer-out);
 }
-.bag:not(.is-open) .bag-head, .bag:not(.is-open) #bag-panel {
+.bag:not(.is-open) #bag-panel {
   opacity: 0;
   transform: translateY(calc(var(--sheet-h, 100vh) - 14px));
 }
@@ -530,18 +509,17 @@ html { scrollbar-gutter: stable; }
   opacity: 1;
   transition: transform .95s var(--ease-drawer-in), opacity .8s var(--ease-soft);
 }
-.bag.is-open .bag-head, .bag.is-open #bag-panel {
+.bag.is-open #bag-panel {
   opacity: 1;
   transform: none;
   transition: opacity .5s var(--ease-soft) .2s, transform .95s var(--ease-drawer-in);
 }
 /* Set by shop.js for one frame while it applies a new --sheet-h before opening. */
 .bag.is-measuring .bag-drawer,
-.bag.is-measuring .bag-head,
 .bag.is-measuring #bag-panel { transition: none !important; }
 /* Without backdrop-filter support, use a near-solid blush instead of a see-through tint. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .bag-drawer { background-color: rgba(247, 225, 227, .96); }
+  .bag-drawer { background-color: rgba(255, 186, 212, .97); }
 }
 #bag-panel.bag-enter .line,
 #bag-panel.bag-enter .bag-foot,

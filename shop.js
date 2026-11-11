@@ -278,6 +278,8 @@ async function boot() {
     const drawer = bag.querySelector('.bag-drawer')
     // The cart sheet is a non-modal dropdown: the page keeps scrolling and stays usable.
     drawer.setAttribute('aria-modal', 'false')
+    // There is no close button, so keyboard opens move focus to the sheet itself.
+    drawer.tabIndex = -1
     let bagCloseTimer = 0
     const finishClose = () => {
       clearTimeout(bagCloseTimer)
@@ -311,7 +313,7 @@ async function boot() {
         if (fromHidden) measureSheet(true)
         void bag.offsetWidth
         bag.classList.add('is-open')
-        if (fromKeyboard) bag.querySelector('.bag-close').focus({ preventScroll: true })
+        if (fromKeyboard) drawer.focus({ preventScroll: true })
         return
       }
       measureSheet()
@@ -336,10 +338,6 @@ async function boot() {
       setBagOpen(false, event.detail === 0)
     })
     bag.addEventListener('click', async (event) => {
-      if (event.target.closest('.bag-close')) {
-        setBagOpen(false, event.detail === 0)
-        return
-      }
       const step = event.target.closest('.bag-qty')
       const remove = event.target.closest('.bag-remove')
       const button = step || remove
