@@ -269,31 +269,47 @@ async function boot() {
       renderCart(cart, bagPanel)
     }
     const isBagOpen = () => bag.classList.contains('is-open')
+    const drawer = bag.querySelector('.bag-drawer')
     let bagCloseTimer = 0
-    const setBagOpen = (open) => {
+    // The page stays scroll-locked until the drawer is fully out, so nothing reflows mid-slide.
+    const finishClose = () => {
       clearTimeout(bagCloseTimer)
-      document.body.classList.toggle('bag-open', open)
+      if (isBagOpen() || bag.hidden) return
+      bag.hidden = true
+      document.body.classList.remove('bag-open')
+    }
+    drawer.addEventListener('transitionend', (event) => {
+      if (event.target === drawer && event.propertyName === 'transform') finishClose()
+    })
+    // fromKeyboard: move focus only for keyboard/assistive use; on touch it can draw a focus ring.
+    const setBagOpen = (open, fromKeyboard = false) => {
+      clearTimeout(bagCloseTimer)
       bagButton.setAttribute('aria-expanded', open ? 'true' : 'false')
       if (open) {
+        document.body.classList.add('bag-open')
         drawBag(true)
         bag.hidden = false
         void bag.offsetWidth
         bag.classList.add('is-open')
-        bag.querySelector('.bag-close').focus({ preventScroll: true })
+        if (fromKeyboard) bag.querySelector('.bag-close').focus({ preventScroll: true })
         return
       }
       bag.classList.remove('is-open')
-      if (bag.contains(document.activeElement)) bagButton.focus({ preventScroll: true })
-      const closeMs = prefersReducedMotion() ? 0 : parseFloat(getComputedStyle(bag).getPropertyValue('--bag-close-ms')) || 480
-      bagCloseTimer = setTimeout(() => { bag.hidden = true }, closeMs)
+      if (bag.contains(document.activeElement)) {
+        if (fromKeyboard) bagButton.focus({ preventScroll: true })
+        else document.activeElement.blur()
+      }
+      const closeMs = prefersReducedMotion() ? 0 : (parseFloat(getComputedStyle(bag).getPropertyValue('--bag-close-ms')) || 560) + 120
+      bagCloseTimer = setTimeout(finishClose, closeMs)
     }
-    bagButton.addEventListener('click', () => setBagOpen(!isBagOpen()))
+    // A click with detail 0 comes from the keyboard or assistive tech, not a pointer.
+    bagButton.addEventListener('click', (event) => setBagOpen(!isBagOpen(), event.detail === 0))
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && isBagOpen()) setBagOpen(false)
+      if (event.key === 'Escape' && isBagOpen()) setBagOpen(false, true)
     })
     bag.addEventListener('click', async (event) => {
       if (event.target.closest('.bag-close, .bag-shade')) {
-        setBagOpen(false)
+        setBagOpen(false, event.detail === 0)
         return
       }
       const step = event.target.closest('.bag-qty')
