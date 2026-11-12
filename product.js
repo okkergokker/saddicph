@@ -134,10 +134,12 @@ export async function renderProduct(main, { addToCart }) {
     replay(price, 'label-swap')
   })
 
-  qty.addEventListener('click', (event) => {
-    const step = event.target.closest('.qty-more, .qty-less')
-    if (!step) return
-    setQuantity(qty, Number(qty.querySelector('.qty-count').textContent) + (step.classList.contains('qty-more') ? 1 : -1))
+  // Listeners sit on the + and − buttons only: iOS highlights any element with a click
+  // listener when tapped, so one listener on the box made the whole box flash.
+  qty.querySelectorAll('.qty-less, .qty-more').forEach((step) => {
+    step.addEventListener('click', () => {
+      setQuantity(qty, Number(qty.querySelector('.qty-count').textContent) + (step.classList.contains('qty-more') ? 1 : -1))
+    })
   })
 
   let labelTimer = 0

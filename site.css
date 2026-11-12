@@ -16,12 +16,12 @@
   color-scheme: light;
 }
 /* Computers show the full menu, so the logo leaves room for all of it. The reserve follows the
-   menu's real width: its text is about 21.8 times the font size, plus five gaps, the extra air
-   before Cart and 48px between logo and menu. */
+   menu's real width: its text is about 24.6 times the font size (re-measure if menu items
+   change), plus five gaps, the extra air before Cart and 48px between logo and menu. */
 @media (min-width: 761px) {
   :root {
     --nav-size: clamp(15px, calc(1.25vw + 4px), 18px);
-    --nav-reserve: calc(var(--nav-size) * 21.8 + var(--nav-gap) * 5 + var(--nav-air) + 48px);
+    --nav-reserve: calc(var(--nav-size) * 24.6 + var(--nav-gap) * 5 + var(--nav-air) + 48px);
   }
 }
 *, *::before, *::after { box-sizing: border-box; }
@@ -342,16 +342,21 @@ header {
   /* The faces sit in the upper half; keep them in frame when wide screens crop the height. */
   object-position: 50% 30%;
 }
-/* Soft shade under the text, so white stays readable on the light kitchen. */
-.hero::after {
+/* A thin grey line along the top and bottom of the photo. On computers the photo is fixed
+   behind the frame and would cover a plain border, so the lines are layers on top of it;
+   on phones (text below the photo) they sit on the photo itself. */
+.hero { --hero-rule: 1px solid #bdb6b3; }
+.hero::before, .hero::after {
   content: "";
   position: absolute;
-  inset: 0;
-  /* Measured for the current one-sentence text: white keeps >= 4.5:1 against the photo behind
-     it at 375-1440px. Re-measure if the text gets longer (it then reaches the lighter top). */
-  background: linear-gradient(to top, rgba(26, 14, 10, .7), rgba(26, 14, 10, .5) 50%, rgba(26, 14, 10, 0) 80%);
+  right: 0;
+  left: 0;
+  z-index: 2;
+  border-top: var(--hero-rule);
   pointer-events: none;
 }
+.hero::before { top: 0; }
+.hero::after { bottom: 0; }
 .about {
   position: relative;
   z-index: 1;
@@ -375,9 +380,10 @@ header {
     min-height: 420px;
     background: none;
   }
-  .hero::after { display: none; }
+  .hero::before, .hero::after { display: none; }
   /* The photo takes whatever height the text leaves, cropped in on the two women on the right. */
   .hero-img {
+    border-block: var(--hero-rule);
     position: static;
     flex: 1 1 0;
     min-height: 0;
@@ -391,6 +397,34 @@ header {
     padding: 18px var(--gutter-r) 20px var(--gutter-l);
     font-size: 15px;
     line-height: 1.4;
+  }
+}
+/* Computers: the whole photo, edge to edge at its own proportions (nothing cropped). It starts
+   at its top below the logo and you scroll down through it to its bottom, then the footer.
+   The text rides along at the bottom of the screen (sticky) while the photo passes and settles
+   at the photo's bottom. The shade travels with the text as its own background, so the text
+   stays readable over whatever part of the photo is behind it. */
+@media (min-width: 761px) {
+  /* The photo starts just above the hat of the maid on the right: its top 200 of 1367 rows
+     are cropped (the hat begins at row ~218), the rest is shown whole, bottom-aligned. */
+  .hero {
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 2000 / 1167;
+    /* Must stay visible: with overflow hidden the hero becomes its own scroll container and
+       the sticky text sticks to it instead of to the window. */
+    overflow: visible;
+  }
+  .hero-img { object-position: 50% 100%; }
+  .about {
+    position: sticky;
+    bottom: 0;
+    width: 100%;
+    padding-top: clamp(120px, 28vh, 300px);
+    padding-right: max(var(--gutter-r), calc(100% - 48rem));
+    /* Measured: white keeps >= 4.5:1 against the photo behind the text. Re-measure if the text
+       gets longer. */
+    background: linear-gradient(to top, rgba(26, 14, 10, .7), rgba(26, 14, 10, .5) 45%, rgba(26, 14, 10, 0));
   }
 }
 .status { margin: 0; font-size: 20px; }
@@ -860,16 +894,20 @@ html { scrollbar-gutter: stable; }
 .pd-thumb img { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; }
 .pd-gallery { position: relative; min-width: 0; }
 /* One horizontal scroll-snap track for both layouts (thumbnails or arrows scroll it). */
+/* Sideways only: overflow-x alone makes overflow-y scrollable too, and then a vertical swipe on
+   the photo scrolled the photo instead of the page. touch-action leaves vertical pans to the page. */
 .pd-track {
   display: flex;
   overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x pan-y;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
   background: #f4efed;
 }
 .pd-track::-webkit-scrollbar { display: none; }
-.pd-slide { flex: 0 0 100%; height: 100%; scroll-snap-align: start; }
+.pd-slide { flex: 0 0 100%; height: 100%; overflow: hidden; scroll-snap-align: start; }
 .pd-img {
   display: block;
   width: 100%;
@@ -915,6 +953,16 @@ html { scrollbar-gutter: stable; }
 }
 .pd .qty-count { width: 2em; flex-basis: 2em; }
 .pd .qty-less svg, .pd .qty-more svg { width: 14px; height: 14px; }
+/* The box itself is not a control; only + and − respond, each with its own comfortable tap area
+   (padding, offset by negative margin so the box keeps its size), its own press feedback
+   instead of the browser's grey flash, and no double-tap zoom. */
+.pd .qty { cursor: default; -webkit-tap-highlight-color: transparent; }
+.pd .qty-less, .pd .qty-more {
+  margin: -9px -10px;
+  padding: 9px 10px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
 .pd-add {
   width: 100%;
   padding: 15px 12px;

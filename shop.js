@@ -249,19 +249,34 @@ function renderCart(cart, root) {
     '<p class="note" role="status"></p></div>'
 }
 
-// The S: on the front page it scrolls back to the top; on other pages it leads home.
+// The S, on every page:
+// - scrolled down: it scrolls back up to the top of the page you are on;
+// - already at the top: it leads to the front page;
+// - with the cart open: it leads to the front page (on the front page itself it closes the cart
+//   and scrolls to the top instead of reloading).
+// closeBag is filled in by boot() once the cart is set up.
+let closeBag = null
 function scrollHomeMark() {
   const mark = document.querySelector('.logo-s')
   if (!mark) return
   mark.style.cursor = 'pointer'
+  const toTop = () => window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
   mark.addEventListener('click', () => {
-    if (document.querySelector('.bag.is-open')) return
-    if (document.body.dataset.page !== 'front') {
-      location.href = '/'
+    const onFront = document.body.dataset.page === 'front'
+    if (document.querySelector('.bag.is-open')) {
+      if (!onFront) {
+        location.href = '/'
+        return
+      }
+      if (closeBag) closeBag()
+      toTop()
       return
     }
-    if (window.scrollY <= 0) return
-    window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+    if (window.scrollY > 1) {
+      toTop()
+      return
+    }
+    if (!onFront) location.href = '/'
   })
 }
 
@@ -532,6 +547,7 @@ async function boot() {
       if (closeMs === 0) finishClose()
       else bagCloseTimer = setTimeout(finishClose, closeMs + 120)
     }
+    closeBag = () => setBagOpen(false)
     // A click with detail 0 comes from the keyboard or assistive tech, not a pointer.
     bagButton.addEventListener('click', (event) => setBagOpen(!isBagOpen(), event.detail === 0))
     document.addEventListener('keydown', (event) => {
