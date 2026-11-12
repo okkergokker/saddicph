@@ -1,5 +1,5 @@
 const SHOPIFY_STOREFRONT_URL = 'https://saddi-5u05ncjc.myshopify.com/api/2025-10/graphql.json'
-const ALLOWED = new Set(['Products', 'Cart', 'CartCreate', 'CartLinesAdd', 'CartLinesUpdate', 'CartLinesRemove'])
+const ALLOWED = new Set(['Products', 'Catalogue', 'Product', 'Cart', 'CartCreate', 'CartLinesAdd', 'CartLinesUpdate', 'CartLinesRemove'])
 const MAX_BODY = 100_000
 
 function json(data, status) {

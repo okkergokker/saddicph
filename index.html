@@ -1,38 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- include: head -->
 <title>Saddi Copenhagen</title>
-<meta name="theme-color" content="#ffffff">
-<link rel="icon" href="/favicon.png" type="image/png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Averia+Serif+Libre:wght@400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/site.css">
 </head>
 <body data-page="front">
   <div class="wrap">
-    <header>
-      <div class="logo-s"><img src="/logo.png?v=2" alt="Saddi" width="895" height="312"></div>
-      <div class="logo-rest" aria-hidden="true"><img src="/logo.png?v=2" alt="" width="895" height="312"></div>
-      <button class="cart-link" id="cart-link" type="button" aria-expanded="false" aria-controls="bag">Cart (<span class="cart-count">0</span>)</button>
-    </header>
-    <div class="bag" id="bag" hidden>
-      <button class="bag-shade" type="button" aria-label="Close cart"></button>
-      <div class="bag-drawer" role="dialog" aria-modal="true" aria-label="Cart">
-        <div class="bag-head">
-          <button class="bag-close" type="button">close</button>
-        </div>
-        <div id="bag-panel"></div>
-      </div>
-    </div>
-    <p class="about">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum</p>
-    <main id="page"><p class="status">Loading products…</p></main>
-    <footer class="site-foot">
-      <p class="foot-nav">About us</p>
-    </footer>
+<!-- include: header -->
+    <main class="front">
+      <section class="hero">
+        <img class="hero-img" src="/front-hero.jpg" srcset="/front-hero-1200.jpg 1200w, /front-hero.jpg 2000w" sizes="100vw" width="2000" height="1367" alt="Three women in aprons having coffee at a kitchen table" fetchpriority="high" decoding="async">
+        <p class="about">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+      </section>
+    </main>
   </div>
+<!-- include: footer -->
 <script type="module" src="/shop.js"></script>
 </body>
 </html>

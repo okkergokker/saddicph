@@ -1,3 +1,7 @@
+import { money, text, gql, prefersReducedMotion, replay, revealOnScroll } from './lib.js'
+import { renderCatalogue } from './catalogue.js'
+import { renderProduct } from './product.js'
+
 const CART_KEY = 'saddi-cart-id'
 const CART_FIELDS = `
   id
@@ -23,31 +27,6 @@ const CART_FIELDS = `
   }
 `
 
-function money(amount, currency) {
-  return new Intl.NumberFormat('en', { style: 'currency', currency }).format(Number(amount))
-}
-
-function text(value) {
-  return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[char]))
-}
-
-async function gql(query, variables) {
-  const response = await fetch('/api/storefront', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, variables }),
-  })
-  const payload = await response.json()
-  if (!response.ok || payload.errors) {
-    const message = payload.errors ? payload.errors.map((error) => error.message).join(' ') : 'Shopify did not respond.'
-    throw new Error(message)
-  }
-  return payload.data
-}
-
-const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -171,56 +150,6 @@ function cssTimeMs(value, fallback) {
   return match ? Number(match[1]) * (match[2] === 's' ? 1000 : 1) : fallback
 }
 
-// Re-trigger a CSS animation by removing the class, forcing a reflow and adding it again.
-function replay(element, className, ...others) {
-  element.classList.remove(className, ...others)
-  void element.offsetWidth
-  element.classList.add(className)
-}
-
-function revealOnScroll(elements) {
-  if (!('IntersectionObserver' in window)) {
-    elements.forEach((element) => element.classList.add('is-in'))
-    return
-  }
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) return
-      entry.target.classList.add('is-in')
-      observer.unobserve(entry.target)
-    })
-  }, { threshold: 0.08, rootMargin: '0px 0px -6% 0px' })
-  elements.forEach((element) => {
-    element.classList.add('reveal')
-    observer.observe(element)
-  })
-}
-
-function revealProducts(root) {
-  const products = [...root.querySelectorAll('.product')]
-  products.forEach((product) => {
-    const img = product.querySelector('img')
-    if (!img) return
-    const loaded = () => img.classList.add('is-loaded')
-    if (img.complete && img.naturalWidth) loaded()
-    else {
-      img.addEventListener('load', loaded, { once: true })
-      img.addEventListener('error', loaded, { once: true })
-    }
-  })
-  revealOnScroll(products)
-}
-
-function setQuantity(qty, value, animate = true) {
-  const next = Math.min(99, Math.max(1, value))
-  const count = qty.querySelector('.qty-count')
-  const previous = Number(count.textContent)
-  count.textContent = String(next)
-  if (animate && next !== previous) replay(count, next > previous ? 'tick-up' : 'tick-down', 'tick-up', 'tick-down')
-  qty.querySelector('.qty-less').disabled = next <= 1
-  qty.querySelector('.qty-more').disabled = next >= 99
-}
-
 function linesOf(cart) {
   return (cart && cart.lines && cart.lines.edges || []).map((edge) => edge.node)
 }
@@ -245,35 +174,6 @@ async function readCart() {
     return null
   }
   return data.cart
-}
-
-async function fetchProducts() {
-  const data = await gql(`query Products {
-    products(first: 20) {
-      edges {
-        node {
-          id
-          title
-          handle
-          descriptionHtml
-          availableForSale
-          featuredImage {
-            url altText width height
-            w480: url(transform: { maxWidth: 480 })
-            w720: url(transform: { maxWidth: 720 })
-            w960: url(transform: { maxWidth: 960 })
-            w1440: url(transform: { maxWidth: 1440 })
-            w2048: url(transform: { maxWidth: 2048 })
-          }
-          priceRange { minVariantPrice { amount currencyCode } }
-          variants(first: 20) {
-            edges { node { id title availableForSale price { amount currencyCode } } }
-          }
-        }
-      }
-    }
-  }`)
-  return data.products.edges.map((edge) => edge.node)
 }
 
 async function addVariant(cart, variantId, quantity) {
@@ -312,48 +212,6 @@ async function removeLine(cart, lineId) {
   return remember(data.cartLinesRemove.cart)
 }
 
-// Product photos come in several Shopify-resized widths, so a phone downloads and decodes an
-// image close to its ~320px slot instead of the full original. Smaller decoded images also keep
-// scrolling light under the blurred cart sheet, which re-blurs whatever is beneath it.
-const PRODUCT_SIZES = '(max-width: 760px) calc(100vw - 56px), min(70vw, 1080px)'
-function productImageAttrs(image) {
-  const sized = [[480, image.w480], [720, image.w720], [960, image.w960], [1440, image.w1440], [2048, image.w2048]]
-    .filter(([width, url]) => url && (!image.width || width < image.width))
-  if (image.width) sized.push([image.width, image.url])
-  const srcset = sized.map(([width, url]) => text(url) + ' ' + width + 'w').join(', ')
-  return ' src="' + text(image.w960 || image.url) + '"' +
-    (srcset ? ' srcset="' + srcset + '" sizes="' + PRODUCT_SIZES + '"' : '')
-}
-
-function renderFront(products, root) {
-  if (!products.length) {
-    root.innerHTML = '<p class="status">There are no products yet.</p>'
-    return
-  }
-  root.innerHTML = products.map((product, index) => {
-    const image = product.featuredImage
-    const size = image && image.width && image.height
-      ? ' width="' + Number(image.width) + '" height="' + Number(image.height) + '"'
-      : ''
-    const loading = index === 0 ? ' fetchpriority="high"' : ' loading="lazy"'
-    const price = product.priceRange.minVariantPrice
-    const variants = product.variants.edges.map((edge) => edge.node)
-    const variant = variants.find((item) => item.availableForSale) || variants[0]
-    const buy = variant
-      ? '<div class="qty"><button class="qty-less" type="button" aria-label="Decrease quantity" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.4 12.3c5.4-.5 10.2.4 15.3-.3"/></svg></button><span class="qty-count">1</span><button class="qty-more" type="button" aria-label="Increase quantity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.2c5.2-.4 10.1.3 15.1-.2"/><path d="M12.2 4.3c-.4 5.3.4 10.2-.2 15.2"/></svg></button></div>' +
-        '<button class="to-basket" type="button" data-variant="' + text(variant.id) + '">Add to cart</button>' +
-        '<p class="note" role="status"></p>'
-      : ''
-    return '<article class="product">' +
-      (image ? '<img' + productImageAttrs(image) + ' alt="' + text(image.altText || product.title) + '"' + size + loading + ' decoding="async">' : '') +
-      '<div class="details"><h1>' + text(product.title) + '</h1>' +
-      '<p class="price">' + money(price.amount, price.currencyCode) + '</p>' +
-      '<p class="tax">Tax included. Shipping calculated at checkout.</p>' +
-      buy +
-      (product.descriptionHtml ? '<div class="copy">' + product.descriptionHtml + '</div>' : '') +
-      '</div></article>'
-  }).join('')
-}
 
 function cartLineHtml(line, index) {
   const item = line.merchandise
@@ -391,18 +249,54 @@ function renderCart(cart, root) {
     '<p class="note" role="status"></p></div>'
 }
 
+// The S: on the front page it scrolls back to the top; on other pages it leads home.
 function scrollHomeMark() {
   const mark = document.querySelector('.logo-s')
   if (!mark) return
+  mark.style.cursor = 'pointer'
   mark.addEventListener('click', () => {
-    if (window.scrollY <= 0 || document.querySelector('.bag.is-open')) return
+    if (document.querySelector('.bag.is-open')) return
+    if (document.body.dataset.page !== 'front') {
+      location.href = '/'
+      return
+    }
+    if (window.scrollY <= 0) return
     window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+  })
+}
+
+// Underline the menu entry for the page you are on.
+function markCurrentNav() {
+  const here = location.pathname.replace(/\/$/, '') || '/'
+  document.querySelectorAll('.site-nav a, .foot-links a').forEach((link) => {
+    if (link.getAttribute('href') === here) link.setAttribute('aria-current', 'page')
+  })
+}
+
+// Footer newsletter: for now it only thanks the visitor; nothing is sent anywhere yet.
+// TODO: connect to Shopify (e.g. a customer with email marketing consent) when that is set up.
+function setupNewsletter() {
+  const form = document.querySelector('.newsletter')
+  if (!form) return
+  const input = form.querySelector('input[type="email"]')
+  const note = form.querySelector('.newsletter-note')
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    if (!input.checkValidity()) {
+      input.reportValidity()
+      return
+    }
+    note.textContent = 'Thank you – you’re on the list.'
+    form.reset()
   })
 }
 
 async function boot() {
   scrollHomeMark()
-  const root = document.getElementById('page')
+  markCurrentNav()
+  setupNewsletter()
+  const page = document.body.dataset.page
+  const root = document.querySelector('main')
   const bag = document.getElementById('bag')
   const bagPanel = document.getElementById('bag-panel')
   const bagButton = document.getElementById('cart-link')
@@ -716,39 +610,21 @@ async function boot() {
         showError(error)
       }
     })
-    renderFront(await fetchProducts(), root)
-    revealProducts(root)
     const footer = document.querySelector('.site-foot')
     if (footer) revealOnScroll([footer])
-    root.addEventListener('click', async (event) => {
-      const step = event.target.closest('.qty-more, .qty-less')
-      if (step) {
-        const qty = step.parentElement
-        const count = Number(qty.querySelector('.qty-count').textContent)
-        setQuantity(qty, count + (step.classList.contains('qty-more') ? 1 : -1))
-        return
-      }
-      const button = event.target.closest('.to-basket')
-      if (!button) return
-      const details = button.closest('.details')
-      const note = details.querySelector('.note')
-      const quantity = Number(details.querySelector('.qty-count').textContent) || 1
-      button.disabled = true
-      button.classList.add('is-busy')
-      if (note) note.textContent = ''
-      try {
-        cart = await addVariant(cart, button.dataset.variant, quantity)
-        setQuantity(details.querySelector('.qty'), 1, false)
-        if (isBagOpen()) patchBag()
-        replay(bagButton, 'bump')
-      } catch (error) {
-        if (note) note.textContent = error.message
-      }
-      button.classList.remove('is-busy')
-      button.disabled = false
-    })
+    // Used by the product page: adds to the cart, bumps the count and shows the cart sheet
+    // (gliding the new line in if it is already open). Errors are thrown to the caller.
+    const addToCart = async (variantId, quantity) => {
+      cart = await addVariant(cart, variantId, quantity)
+      replay(bagButton, 'bump')
+      if (isBagOpen()) await patchBag()
+      else setBagOpen(true)
+    }
+    if (page === 'catalogue') await renderCatalogue(root)
+    else if (page === 'product') await renderProduct(root, { addToCart })
   } catch (error) {
-    root.innerHTML = '<p class="status">' + text(error.message) + '</p>'
+    if (root && page !== 'front') root.innerHTML = '<p class="status">' + text(error.message) + '</p>'
+    else console.error(error)
   }
 }
 

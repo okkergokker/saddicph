@@ -41,8 +41,43 @@ function storefrontDevProxy() {
   }
 }
 
+// Shared page parts: <!-- include: header --> in a page is replaced with partials/header.html
+// (also head and footer), in dev and in the build, so every page uses the same markup.
+function htmlPartials() {
+  const partial = (name) => readFileSync(fileURLToPath(new URL(`./partials/${name}.html`, import.meta.url)), 'utf8')
+  return {
+    name: 'html-partials',
+    transformIndexHtml: {
+      order: 'pre',
+      handler: (html) => html.replace(/<!--\s*include:\s*([\w-]+)\s*-->/g, (_, name) => partial(name)),
+    },
+    handleHotUpdate({ file, server }) {
+      if (file.replace(/\\/g, '/').includes('/partials/')) server.ws.send({ type: 'full-reload' })
+    },
+  }
+}
+
+// Dev server: the same clean URLs as production (worker.js): /catalogue and /products/<handle>.
+function cleanUrls() {
+  return {
+    name: 'clean-urls',
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const [path, query = ''] = request.url.split('?')
+        const page = path === '/catalogue' || path === '/catalogue/' ? '/catalogue.html'
+          : /^\/products\/[^/]+\/?$/.test(path) ? '/product.html'
+          : null
+        if (page) request.url = page + (query ? '?' + query : '')
+        next()
+      })
+    },
+  }
+}
+
+const page = (file) => fileURLToPath(new URL(`./${file}`, import.meta.url))
+
 export default defineConfig({
-  plugins: [storefrontDevProxy()],
+  plugins: [storefrontDevProxy(), htmlPartials(), cleanUrls()],
   server: {
     fs: {
       deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.dev.vars', '**/.wrangler/**'],
@@ -51,7 +86,9 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        main: page('index.html'),
+        catalogue: page('catalogue.html'),
+        product: page('product.html'),
       },
     },
   },

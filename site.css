@@ -3,10 +3,26 @@
   --ink: #6b1c23;
   --ink-soft: rgba(107, 28, 35, .78);
   --line: rgba(107, 28, 35, .28);
-  --logo-w: min(640px, calc(100vw - clamp(28px, 4vw, 64px) * 2 - 200px));
+  --gutter-l: max(env(safe-area-inset-left, 0px), clamp(28px, 4vw, 64px));
+  --gutter-r: max(env(safe-area-inset-right, 0px), clamp(28px, 4vw, 64px));
+  --nav-size: 18px;
+  --nav-gap: clamp(14px, 1.5vw, 24px);
+  --nav-air: clamp(10px, 2.2vw, 40px);
+  /* Room kept free next to the logo for the top-right menu (phones: Catalogue + Cart). */
+  --nav-reserve: 200px;
+  --logo-w: min(640px, calc(100vw - clamp(28px, 4vw, 64px) * 2 - var(--nav-reserve)));
   --logo-h: calc(var(--logo-w) * 312 / 895);
   --s-w: calc(var(--logo-w) * 305 / 895);
   color-scheme: light;
+}
+/* Computers show the full menu, so the logo leaves room for all of it. The reserve follows the
+   menu's real width: its text is about 21.8 times the font size, plus five gaps, the extra air
+   before Cart and 48px between logo and menu. */
+@media (min-width: 761px) {
+  :root {
+    --nav-size: clamp(15px, calc(1.25vw + 4px), 18px);
+    --nav-reserve: calc(var(--nav-size) * 21.8 + var(--nav-gap) * 5 + var(--nav-air) + 48px);
+  }
 }
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; background: var(--wall); color: var(--ink); }
@@ -56,17 +72,37 @@ header {
   max-width: none;
 }
 .logo-rest img { margin-left: calc(var(--s-w) * -1); }
-.cart-link {
+/* Top-right menu, fixed like the S and above the cart sheet (z-index 5). Phones show only
+   Catalogue and Cart (.nav-desktop is hidden there). */
+.site-nav {
   position: fixed;
   z-index: 5;
   top: calc(env(safe-area-inset-top, 0px) + 36px + var(--logo-h) * 16 / 312);
   right: max(env(safe-area-inset-right, 0px), clamp(28px, 4vw, 64px));
+  display: flex;
+  align-items: baseline;
+  gap: var(--nav-gap);
   margin: 0;
-  padding: 0 0 6px 12px;
+  font-size: var(--nav-size);
+  line-height: 1;
+  white-space: nowrap;
+}
+.site-nav a {
+  padding: 0 0 6px;
+  color: var(--ink);
+  text-decoration: none;
+}
+/* A little more air before Cart on computers, as on the reference. */
+@media (min-width: 761px) {
+  .site-nav .cart-link { margin-left: var(--nav-air); }
+}
+.cart-link {
+  margin: 0;
+  padding: 0 0 6px;
   border: 0;
   background: transparent;
   color: var(--ink);
-  font-size: 22px;
+  font-size: inherit;
   line-height: 1;
   text-align: right;
   cursor: pointer;
@@ -275,56 +311,89 @@ header {
   }
   .bag-items { flex: 1; }
   .bag-foot { flex-shrink: 0; padding-top: 4px; }
-  .cart-link {
-    top: calc(env(safe-area-inset-top, 0px) + 36px + var(--logo-h) / 2 - 11px);
-    padding-bottom: 0;
-  }
+  .site-nav { top: calc(env(safe-area-inset-top, 0px) + 36px + var(--logo-h) / 2 - var(--nav-size) / 2); }
+  .site-nav a, .cart-link { padding-bottom: 0; }
+  .nav-desktop { display: none; }
 }
 .cart-link[aria-current="page"] { color: var(--ink-soft); }
-@media (hover: hover) { .cart-link:hover { color: var(--ink-soft); } }
-.about {
+@media (hover: hover) { .site-nav a:hover, .cart-link:hover { color: var(--ink-soft); } }
+/* Front page hero: an edge-to-edge photo in place of a video, with the about text over it in
+   white. It breaks out of .wrap's side padding with negative margins (100vw would include the
+   scrollbar gutter and scroll sideways). Computers: it fills the window below the logo row.
+   Phones: a 4:3 frame (as the reference does on mobile) that grows if the text needs more room. */
+.hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  margin: 0 calc(var(--gutter-r) * -1) 0 calc(var(--gutter-l) * -1);
+  height: calc(100vh - env(safe-area-inset-top, 0px) - 36px - var(--logo-h) - clamp(32px, 5vh, 64px));
+  height: calc(100svh - env(safe-area-inset-top, 0px) - 36px - var(--logo-h) - clamp(32px, 5vh, 64px));
+  min-height: 360px;
+  overflow: hidden;
+  background: #cfc6b6;
+}
+.hero-img {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
-  margin: 0 0 clamp(72px, 12vh, 140px);
+  height: 100%;
+  object-fit: cover;
+  /* The faces sit in the upper half; keep them in frame when wide screens crop the height. */
+  object-position: 50% 30%;
+}
+/* Soft shade under the text, so white stays readable on the light kitchen. */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* Measured for the current one-sentence text: white keeps >= 4.5:1 against the photo behind
+     it at 375-1440px. Re-measure if the text gets longer (it then reaches the lighter top). */
+  background: linear-gradient(to top, rgba(26, 14, 10, .7), rgba(26, 14, 10, .5) 50%, rgba(26, 14, 10, 0) 80%);
+  pointer-events: none;
+}
+.about {
+  position: relative;
+  z-index: 1;
+  width: min(48rem, 100%);
+  margin: 0;
+  padding: clamp(24px, 3vw, 48px) var(--gutter-r) clamp(28px, 4vw, 56px) var(--gutter-l);
   font-size: clamp(18px, 1.6vw, 24px);
   line-height: 1.45;
-  color: var(--ink);
+  color: #fff;
+  text-shadow: 0 1px 14px rgba(26, 14, 10, .3);
+}
+@media (max-width: 760px) {
+  /* Phones: the text sits below the photo in the site's red; the photo is a plain 4:3 frame. */
+  /* The photo and the text below it together fill the start screen. svh (the screen with the
+     browser bars showing) keeps the whole text in view on the first screen in every state. */
+  .hero {
+    flex-direction: column;
+    align-items: stretch;
+    height: calc(100vh - env(safe-area-inset-top, 0px) - 36px - var(--logo-h) - clamp(32px, 5vh, 64px));
+    height: calc(100svh - env(safe-area-inset-top, 0px) - 36px - var(--logo-h) - clamp(32px, 5vh, 64px));
+    min-height: 420px;
+    background: none;
+  }
+  .hero::after { display: none; }
+  /* The photo takes whatever height the text leaves, cropped in on the two women on the right. */
+  .hero-img {
+    position: static;
+    flex: 1 1 0;
+    min-height: 0;
+    height: 0;
+    object-position: 82% 38%;
+  }
+  .about {
+    width: 100%;
+    color: var(--ink);
+    text-shadow: none;
+    padding: 18px var(--gutter-r) 20px var(--gutter-l);
+    font-size: 15px;
+    line-height: 1.4;
+  }
 }
 .status { margin: 0; font-size: 20px; }
-.card, .product {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  column-gap: clamp(24px, 4vw, 56px);
-  width: 100%;
-  text-decoration: none;
-}
-.card img, .product img {
-  display: block;
-  width: min(70vw, 1080px);
-  height: auto;
-  object-fit: contain;
-}
-.details {
-  align-self: start;
-  min-width: 0;
-  padding-top: 2px;
-  color: var(--ink);
-}
-.details h1 {
-  margin: 0;
-  font-size: clamp(32px, 4vw, 48px);
-  font-weight: 400;
-  line-height: 1.15;
-}
-.details .price {
-  margin: 12px 0 0;
-  font-size: 22px;
-}
-.details .tax {
-  margin: 6px 0 0;
-  color: var(--ink-soft);
-  font-size: 16px;
-}
 .qty {
   display: flex;
   align-items: center;
@@ -358,38 +427,6 @@ header {
   stroke-linecap: round;
 }
 .qty-less:disabled, .qty-more:disabled { opacity: .35; cursor: default; }
-.to-basket {
-  display: inline-block;
-  margin-top: 14px;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-  font-size: 22px;
-  line-height: 1.2;
-  text-decoration: underline;
-  text-underline-offset: 0.16em;
-}
-.to-basket:hover { color: var(--ink-soft); }
-.to-basket:disabled { opacity: .45; cursor: not-allowed; }
-.details .note { margin: 10px 0 0; min-height: 0; }
-.details .copy {
-  margin-top: 22px;
-  font-size: clamp(16px, 1.3vw, 20px);
-  line-height: 1.5;
-  color: var(--ink-soft);
-}
-.details .copy p { margin: 0 0 1em; }
-.details .copy p:last-child { margin-bottom: 0; }
-.details .copy a { text-underline-offset: 0.15em; }
-#page > h1 { margin: 0; font-size: clamp(32px, 4vw, 48px); font-weight: 400; }
-@media (max-width: 760px) {
-  .card, .product {
-    grid-template-columns: 1fr;
-    row-gap: 28px;
-  }
-  .card img, .product img { width: 100%; }
-}
 .more, .add, .checkout, .remove {
   border: 1.5px solid var(--ink);
   background: transparent;
@@ -424,15 +461,126 @@ header {
   border-top: 1px solid var(--line);
   font-size: 20px;
 }
+/* Footer, laid out like the reference: white with the site's red text, set off from the page
+   by a thin red rule. Computers: a narrow column (Instagram), two link columns and a wide
+   newsletter column, then a bottom row with the copyright and the country picker. Phones:
+   links two by two, the rest stacked. --ink on white is about 11:1. */
 .site-foot {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: clamp(96px, 16vh, 180px);
+  --foot-fg: var(--ink);
+  --foot-bg: var(--wall);
+  background: var(--foot-bg);
+  border-top: 1px solid var(--line);
+  color: var(--foot-fg);
+  padding:
+    clamp(40px, 5vw, 64px)
+    var(--gutter-r)
+    calc(env(safe-area-inset-bottom, 0px) + clamp(28px, 3vw, 40px))
+    var(--gutter-l);
+  font-size: 15px;
+  line-height: 1.45;
 }
-.foot-nav {
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.35;
+.site-foot a { color: inherit; text-decoration: none; }
+.site-foot :focus-visible { outline-color: var(--foot-fg); }
+.foot-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, .8fr) minmax(0, 1fr) minmax(0, 2.3fr);
+  column-gap: clamp(24px, 3vw, 56px);
+  align-items: start;
+}
+.foot-links { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+/* Same draw-in underline as the top menu. */
+.foot-links a {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition: background-size .45s var(--ease-out, ease);
+}
+@media (hover: hover) {
+  .foot-links a:hover { background-size: 100% 1px; }
+}
+.foot-icon { display: inline-flex; transition: opacity .3s; }
+.foot-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.foot-icon .dot { fill: currentColor; stroke: none; }
+@media (hover: hover) { .foot-icon:hover { opacity: .7; } }
+.newsletter-title { display: block; margin-bottom: 14px; }
+.newsletter-row { display: flex; gap: 16px; }
+.newsletter input,
+.newsletter button,
+.foot-market select {
+  border: 1px solid var(--foot-fg);
+  border-radius: 0;
+  font: inherit;
+  font-size: 15px;
+}
+.newsletter input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  background: transparent;
+  color: var(--foot-fg);
+}
+.newsletter input::placeholder { color: var(--ink-soft); }
+.newsletter button {
+  padding: 12px 20px;
+  background: var(--foot-fg);
+  color: var(--foot-bg);
+  cursor: pointer;
+  transition: background-color .3s, color .3s;
+}
+@media (hover: hover) {
+  .newsletter button:hover { background: transparent; color: var(--foot-fg); }
+}
+.newsletter-note { margin: 10px 0 0; min-height: 1.45em; }
+.foot-bottom {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: clamp(56px, 8vw, 110px);
+}
+.foot-copy { margin: 0; font-size: 13px; }
+.foot-market select {
+  appearance: none;
+  padding: 10px 40px 10px 12px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%236b1c23' stroke-width='1.4'/%3E%3C/svg%3E")
+    no-repeat right 14px center / 12px 8px;
+  color: var(--foot-fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+.foot-market option { color: var(--ink); }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  /* Phones: the page above the footer is at least one full screen tall, so the footer only
+     shows once you scroll. lvh is the tallest the viewport gets (browser bars hidden); newer
+     iOS Safari also shows the page through its see-through bottom bar, so the full large
+     viewport plus the home-indicator area must be covered, not just the svh/dvh space. */
+  .wrap {
+    min-height: calc(100vh + env(safe-area-inset-bottom, 0px));
+    min-height: calc(100lvh + env(safe-area-inset-bottom, 0px));
+  }
+  .foot-grid {
+    grid-template-columns: 1fr 1fr;
+    row-gap: 32px;
+  }
+  .newsletter { grid-column: 1 / -1; }
+  .foot-social { grid-column: 1 / -1; order: 4; }
+  .foot-bottom { flex-direction: column-reverse; align-items: flex-start; margin-top: 40px; }
 }
 
 /* ---------- Motion & finish ----------
@@ -452,6 +600,7 @@ html { scrollbar-gutter: stable; }
 
 @keyframes rise-in { from { opacity: 0; transform: translateY(14px); } }
 @keyframes fade-in { from { opacity: 0; } }
+@keyframes label-in { from { opacity: 0; transform: translateY(4px); } }
 @keyframes tick-up { from { opacity: 0; transform: translateY(7px); } }
 @keyframes tick-down { from { opacity: 0; transform: translateY(-7px); } }
 @keyframes count-bump {
@@ -462,14 +611,15 @@ html { scrollbar-gutter: stable; }
 
 /* Intro: both logo halves share one identical animation so the seam stays clean. */
 .logo-s, .logo-rest { animation: rise-in 1.1s var(--ease-out) .1s both; }
-.about { animation: rise-in 1.1s var(--ease-out) .35s both; }
-.cart-link { animation: fade-in .9s var(--ease-soft) .6s both; }
+.hero-img { animation: fade-in 1.4s var(--ease-soft) .15s both; }
+.about { animation: rise-in 1.1s var(--ease-out) .45s both; }
+.site-nav { animation: fade-in .9s var(--ease-soft) .6s both; }
 .status { animation: fade-in .6s var(--ease-soft) .3s backwards; }
 /* In the cart the panel's own fade (shop.js) or the bag-enter rise handles the message. */
 .bag .status { animation: none; }
 
 /* Underline that draws in from the left */
-.cart-link {
+.site-nav a, .cart-link {
   background-image: linear-gradient(currentColor, currentColor);
   background-repeat: no-repeat;
   background-origin: content-box;
@@ -479,24 +629,19 @@ html { scrollbar-gutter: stable; }
 }
 /* Hover-only: on touch screens :hover sticks after a tap and the line would linger. */
 @media (hover: hover) {
-  .cart-link:hover { background-size: 100% 1px; }
+  .site-nav a:hover, .cart-link:hover { background-size: 100% 1px; }
 }
 .cart-count { display: inline-block; }
 .cart-link.bump .cart-count { animation: count-bump .6s var(--ease-out); }
 
-/* Product reveal (classes added by shop.js) */
-/* Transitions live on the .is-in state so hiding is instant and only the reveal animates. */
-.product.reveal img { opacity: 0; transform: translateY(28px); }
-.product.reveal.is-in img { transition: opacity 1.1s var(--ease-soft), transform 1.4s var(--ease-out); }
-.product.reveal.is-in img.is-loaded { opacity: 1; transform: none; }
-.product.reveal:not(.is-in) .details > * { opacity: 0; }
-.product.is-in .details > * { animation: rise-in .9s var(--ease-out) backwards; }
-.product.is-in .details > :nth-child(1) { animation-delay: .25s; }
-.product.is-in .details > :nth-child(2) { animation-delay: .33s; }
-.product.is-in .details > :nth-child(3) { animation-delay: .41s; }
-.product.is-in .details > :nth-child(4) { animation-delay: .49s; }
-.product.is-in .details > :nth-child(5) { animation-delay: .57s; }
-.product.is-in .details > :nth-child(n+6) { animation-delay: .65s; }
+/* Product cards rise in as they scroll into view (classes from revealOnScroll in lib.js).
+   Transitions live on .is-in so hiding is instant and only the reveal animates. */
+.card.reveal { opacity: 0; transform: translateY(24px); }
+.card.reveal.is-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity .9s var(--ease-soft), transform 1.1s var(--ease-out);
+}
 .site-foot.reveal { opacity: 0; transform: translateY(10px); }
 .site-foot.reveal.is-in {
   opacity: 1;
@@ -511,12 +656,8 @@ html { scrollbar-gutter: stable; }
 .bag .bag-count, .bag .bag-total { display: inline-block; }
 .qty-count.tick-up, .bag-count.tick-up, .bag-total.tick-up { animation: tick-up .3s var(--ease-out); }
 .qty-count.tick-down, .bag-count.tick-down { animation: tick-down .3s var(--ease-out); }
-.to-basket {
-  transition: color .3s var(--ease-soft), opacity .3s var(--ease-soft), text-underline-offset .3s var(--ease-out);
-}
-.to-basket:not(:disabled):hover { text-underline-offset: .3em; }
-/* While adding, the button keeps its look; only the cursor shows it is working. */
-.to-basket.is-busy:disabled { opacity: 1; cursor: progress; }
+/* Swapped labels/prices fade up into place. */
+.label-swap { animation: label-in .4s var(--ease-out); }
 
 /* Cart sheet rolls down / up.
    Performance: only transform and opacity animate, so phones run it on the GPU. The blur and
@@ -602,6 +743,246 @@ html { scrollbar-gutter: stable; }
       drop-shadow(0 1.5px 0 var(--wall))
       drop-shadow(0 -1.5px 0 var(--wall));
   }
+}
+
+/* ---------- Catalogue and product pages ----------
+   Layout follows the reference shop's catalogue/product pages; look and content are Saddi's. */
+.site-nav a[aria-current="page"], .foot-links a[aria-current="page"] { background-size: 100% 1px; }
+.catalogue, .product-page { padding-bottom: clamp(48px, 8vw, 120px); }
+.page-title {
+  margin: 0 0 clamp(28px, 4vw, 64px);
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+/* Product card (catalogue and "You may also like"): 4:5 photo, the second photo fades in on
+   hover, then name and price. */
+.card { display: block; color: inherit; text-decoration: none; }
+.card-media {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  background: #f4efed;
+}
+.card-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity .8s var(--ease-soft), transform 1.2s var(--ease-out);
+}
+.card-img.is-loaded { opacity: 1; }
+@media (hover: hover) {
+  .card:hover .card-img { transform: scale(1.025); }
+  .card:hover .card-img-alt { opacity: 1; }
+}
+.card-name, .card-price { display: block; font-size: 16px; line-height: 1.35; }
+.card-name { margin-top: 14px; }
+.card-price { margin-top: 2px; color: var(--ink-soft); }
+
+/* Catalogue: categories on the left, a two-column grid whose right column sits lower. */
+.cat-layout {
+  display: grid;
+  grid-template-columns: clamp(130px, 17vw, 260px) minmax(0, 1fr);
+  column-gap: clamp(20px, 3vw, 48px);
+  align-items: start;
+}
+.cat-filters {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 16px;
+}
+.cat-filters a {
+  padding-bottom: 2px;
+  color: inherit;
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition: background-size .45s var(--ease-out);
+}
+.cat-filters a[aria-current="true"] { background-size: 100% 1px; }
+@media (hover: hover) { .cat-filters a:hover { background-size: 100% 1px; } }
+.cat-grid {
+  --stagger: clamp(60px, 11vw, 160px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: clamp(24px, 4vw, 80px);
+  row-gap: var(--stagger);
+  padding-bottom: var(--stagger);
+}
+/* `translate` (not transform) so it adds to the reveal's own transform. */
+.cat-grid .card:nth-child(even) { translate: 0 var(--stagger); }
+.cat-grid > .status { grid-column: 1 / -1; }
+@media (max-width: 760px) {
+  .cat-layout { display: block; }
+  /* Phones: categories become a row you swipe sideways, edge to edge, without a scrollbar. */
+  .cat-filters {
+    flex-direction: row;
+    gap: 18px;
+    margin: 0 calc(var(--gutter-r) * -1) 24px calc(var(--gutter-l) * -1);
+    padding: 0 var(--gutter-r) 4px var(--gutter-l);
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+  .cat-filters::-webkit-scrollbar { display: none; }
+  .cat-grid { grid-template-columns: minmax(0, 1fr); row-gap: 44px; padding-bottom: 0; }
+  .cat-grid .card:nth-child(even) { translate: none; }
+}
+
+/* Product page: thumbnails | photo | sticky info on computers. */
+.pd {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, .9fr);
+  column-gap: clamp(28px, 4vw, 72px);
+  align-items: start;
+}
+.pd.has-thumbs { grid-template-columns: clamp(64px, 8vw, 120px) minmax(0, 1.3fr) minmax(300px, .9fr); }
+.pd-thumbs { display: flex; flex-direction: column; gap: 14px; }
+.pd-thumb {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  opacity: .5;
+  transition: opacity .3s var(--ease-soft);
+}
+.pd-thumb[aria-current="true"] { opacity: 1; }
+@media (hover: hover) { .pd-thumb:hover { opacity: 1; } }
+.pd-thumb img { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; }
+.pd-gallery { position: relative; min-width: 0; }
+/* One horizontal scroll-snap track for both layouts (thumbnails or arrows scroll it). */
+.pd-track {
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  background: #f4efed;
+}
+.pd-track::-webkit-scrollbar { display: none; }
+.pd-slide { flex: 0 0 100%; height: 100%; scroll-snap-align: start; }
+.pd-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity .9s var(--ease-soft);
+}
+.pd-img.is-loaded { opacity: 1; }
+.pd-arrows { display: none; }
+.pd-info {
+  position: sticky;
+  top: calc(env(safe-area-inset-top, 0px) + 36px + var(--logo-h) * 16 / 312 + 56px);
+  animation: rise-in .9s var(--ease-out) .15s both;
+}
+.pd-title { margin: 0; font-size: 24px; font-weight: 400; line-height: 1.25; }
+.pd-price { margin: 10px 0 0; font-size: 16px; }
+.pd-ship { margin: 6px 0 0; font-size: 13.5px; color: var(--ink-soft); }
+.pd-variant select {
+  display: block;
+  width: 100%;
+  margin-top: 22px;
+  padding: 11px 40px 11px 12px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  appearance: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%236b1c23' stroke-width='1.4'/%3E%3C/svg%3E")
+    no-repeat right 14px center / 12px 8px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.pd-buy { display: grid; gap: 14px; margin-top: 22px; }
+.pd .qty {
+  width: max-content;
+  margin: 0;
+  padding: 9px 14px;
+  border: 1px solid var(--ink);
+  gap: 10px;
+  font-size: 16px;
+}
+.pd .qty-count { width: 2em; flex-basis: 2em; }
+.pd .qty-less svg, .pd .qty-more svg { width: 14px; height: 14px; }
+.pd-add {
+  width: 100%;
+  padding: 15px 12px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--wall);
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color .3s var(--ease-soft), color .3s var(--ease-soft), opacity .3s var(--ease-soft);
+}
+@media (hover: hover) { .pd-add:not(:disabled):hover { background: transparent; color: var(--ink); } }
+.pd-add:disabled { opacity: .5; cursor: not-allowed; }
+.pd-add.is-busy:disabled { opacity: 1; cursor: progress; }
+.pd-note { margin-top: 10px; min-height: 0; }
+.pd-note:empty { display: none; }
+.pd-copy { margin-top: 28px; font-size: 16px; line-height: 1.55; }
+.pd-copy p { margin: 0 0 1em; }
+.pd-copy p:last-child { margin-bottom: 0; }
+.pd-sections { margin-top: 32px; border-top: 1px solid var(--line); }
+.pd-section { border-bottom: 1px solid var(--line); }
+.pd-section summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  list-style: none;
+  cursor: pointer;
+  font-size: 16px;
+}
+.pd-section summary::-webkit-details-marker { display: none; }
+.pd-section summary::after { content: "+"; transition: transform .35s var(--ease-out); }
+.pd-section[open] summary::after { transform: rotate(45deg); }
+.pd-section-body { padding: 0 0 18px; font-size: 15px; line-height: 1.55; color: var(--ink-soft); }
+.pd-section[open] .pd-section-body { animation: rise-in .5s var(--ease-out); }
+.pd-section-body p { margin: 0 0 .8em; }
+.pd-section-body p:last-child { margin-bottom: 0; }
+.pd-back { margin: 14px 0 0; }
+.pd-more { margin-top: clamp(80px, 10vw, 160px); }
+.pd-more h2 { margin: 0 0 28px; font-size: 24px; font-weight: 400; }
+.pd-more-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(16px, 2vw, 32px); }
+@media (max-width: 760px) {
+  /* Phones: an edge-to-edge photo carousel with arrows and a counter, then the info. */
+  .pd, .pd.has-thumbs { display: block; }
+  .pd-thumbs { display: none; }
+  .pd-gallery { margin: 0 calc(var(--gutter-r) * -1) 0 calc(var(--gutter-l) * -1); }
+  .pd-arrows {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 10px var(--gutter-r) 0 var(--gutter-l);
+    font-size: 15px;
+  }
+  .pd-arrows button {
+    padding: 4px 6px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 18px;
+    cursor: pointer;
+  }
+  .pd-info { position: static; margin-top: 22px; }
+  .pd-more-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

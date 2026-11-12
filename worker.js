@@ -9,6 +9,11 @@ export default {
       }
       return forwardStorefront(await request.text(), env.SHOPIFY_STOREFRONT_TOKEN)
     }
+    // /products/<handle> all share one page; product.js reads the handle from the URL.
+    // "/product" (not "/product.html") so html_handling serves the file instead of redirecting.
+    if (/^\/products\/[^/]+\/?$/.test(url.pathname)) {
+      return env.ASSETS.fetch(new Request(new URL('/product', url), request))
+    }
     return env.ASSETS.fetch(request)
   },
 }
