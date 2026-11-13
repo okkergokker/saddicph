@@ -78,10 +78,9 @@ function inkStroke(x1, y1, x2, y2, rand, ref, fixedAfter) {
 // Paths are created once and only their shape is updated on resize, so a resize during the
 // draw-in does not restart it. The outline is never stretched, and since inkStroke's shape does
 // not depend on length, a redraw at a new height only lengthens or shortens the side strokes.
-// The side strokes always end exactly INK_TAIL px past the bottom stroke, and the top/side
-// layer sits in a frame that clips at that same line and rides the sheet's edge. So during a
-// glide (when the side strokes are drawn longer than the visible sheet) and after it, they end
-// in the very same place, and the redraw at the end of a glide changes nothing visible.
+// The side strokes are drawn longer than the sheet and the top/side layer sits in a frame
+// that clips them INK_TAIL px past the bottom stroke and rides the sheet's edge, so they always
+// end in the same place relative to the bottom, whatever the sheet's height.
 const INK_BOTTOM_H = 24
 const INK_MARGIN = 8
 const INK_TAIL = 4
@@ -97,7 +96,6 @@ function inkOutline(sheet) {
   frame.className = 'bag-ink'
   frame.style.bottom = INK_MARGIN - INK_TAIL + 'px'
   const svg = makeSvg('bag-outline')
-  svg.style.height = `calc(100% + ${INK_MARGIN - INK_TAIL}px)`
   frame.append(svg)
   const bottom = makeSvg('bag-outline bag-outline-bottom')
   const paths = []
@@ -113,10 +111,19 @@ function inkOutline(sheet) {
     }
   }
   sheet.prepend(frame, bottom)
+  // The top/side layer is drawn for the tallest the sheet can be (its max-height), and the frame
+  // clips it at the sheet's current bottom. So adding or removing items, which changes the
+  // sheet's height, never redraws a stroke; only a new width or max-height (the window was
+  // resized) does.
+  let drawnW = 0
+  let drawnH = 0
   const draw = () => {
     const w = sheet.clientWidth
-    const h = sheet.clientHeight
-    if (!w || !h) return
+    const h = Math.ceil(Math.max(sheet.clientHeight, parseFloat(getComputedStyle(sheet).maxHeight) || 0))
+    if (!w || !h || (w === drawnW && h === drawnH)) return
+    drawnW = w
+    drawnH = h
+    svg.style.height = h + 'px'
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`)
     bottom.setAttribute('viewBox', `0 0 ${w} ${INK_BOTTOM_H}`)
     // All eight strokes come from one seeded sequence in a fixed order, so the hand never changes.
@@ -137,8 +144,7 @@ function inkOutline(sheet) {
       path.setAttribute('d', inkStroke(x1, y1, x2, y2, rand, ref, tail))
     })
   }
-  // ResizeObserver runs after layout and before paint, so each redraw lands in the same frame
-  // as the size change. During a contents change it fires at most at the start and the end.
+  // ResizeObserver runs after layout and before paint; draw() ignores height-only changes.
   new ResizeObserver(draw).observe(sheet)
   draw()
   return svg
@@ -650,8 +656,6 @@ async function boot() {
         showError(error)
       }
     })
-    const footer = document.querySelector('.site-foot')
-    if (footer) revealOnScroll([footer])
     // Used by the product page: adds to the cart, bumps the count and shows the cart sheet
     // (gliding the new line in if it is already open). Errors are thrown to the caller.
     const addToCart = async (variantId, quantity) => {
@@ -666,6 +670,11 @@ async function boot() {
     if (root && page !== 'front') root.innerHTML = '<p class="status">' + text(error.message) + '</p>'
     else console.error(error)
   }
+  // The footer is set up only once the page's own content is in place: until then CSS keeps it
+  // hidden below the fold, so it never sits high on an empty page and then drops down.
+  document.querySelectorAll('[aria-busy="true"]').forEach((element) => element.removeAttribute('aria-busy'))
+  const footer = document.querySelector('.site-foot')
+  if (footer) revealOnScroll([footer])
 }
 
 boot()

@@ -792,6 +792,11 @@ html { scrollbar-gutter: stable; }
    Layout follows the reference shop's catalogue/product pages; look and content are Saddi's. */
 .site-nav a[aria-current="page"], .foot-links a[aria-current="page"] { background-size: 100% 1px; }
 .catalogue, .product-page { padding-bottom: clamp(48px, 8vw, 120px); }
+/* While a page's products are loading (aria-busy, removed by shop.js), the page holds at least
+   a screen of room and the footer stays hidden, so the footer never shows high on an empty page
+   and then drops down when the products arrive. */
+.cat-grid[aria-busy="true"], .product-page[aria-busy="true"] { min-height: var(--start-h, 100vh); }
+body:has([aria-busy="true"]) .site-foot { visibility: hidden; }
 .page-title {
   margin: 0 0 clamp(28px, 4vw, 64px);
   font-size: 24px;
