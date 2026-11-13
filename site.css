@@ -46,7 +46,8 @@ header {
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: clamp(32px, 5vh, 64px);
+  /* --start-h (set by shop.js) is the window height at load, frozen against browser bars. */
+  margin-bottom: clamp(32px, calc(var(--start-h, 100vh) * .05), 64px);
 }
 .logo-s, .logo-rest {
   display: block;
@@ -211,10 +212,15 @@ header {
   column-gap: clamp(32px, 5vw, 80px);
   min-height: 0;
 }
-/* The list can still scroll (touch/wheel) when there are many items, but never shows a
-   scrollbar, including the brief overflow while the lines rise in. */
+/* The list is a plain box, and only becomes a scroll container (.is-scrolling, set by
+   shop.js) when the items don't fit in the sheet. Turning a scroll container on and off
+   rebuilds the phone's GPU layers, so it never happens during a glide. It scrolls by touch or
+   wheel and never shows a scrollbar. */
 .bag-items {
   min-height: 0;
+  overflow: visible;
+}
+.bag-items.is-scrolling {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -326,8 +332,7 @@ header {
   display: flex;
   align-items: flex-end;
   margin: 0 calc(var(--gutter-r) * -1) 0 calc(var(--gutter-l) * -1);
-  height: calc(100vh - env(safe-area-inset-top, 0px) - 36px - var(--logo-h) - clamp(32px, 5vh, 64px));
-  height: calc(100svh - env(safe-area-inset-top, 0px) - 36px - var(--logo-h) - clamp(32px, 5vh, 64px));
+  height: calc(var(--start-h, 100svh) - env(safe-area-inset-top, 0px) - 36px - var(--logo-h) - clamp(32px, calc(var(--start-h, 100vh) * .05), 64px));
   min-height: 360px;
   overflow: hidden;
   background: #cfc6b6;
@@ -370,13 +375,14 @@ header {
 }
 @media (max-width: 760px) {
   /* Phones: the text sits below the photo in the site's red; the photo is a plain 4:3 frame. */
-  /* The photo and the text below it together fill the start screen. svh (the screen with the
-     browser bars showing) keeps the whole text in view on the first screen in every state. */
+  /* The photo and the text below it together fill the start screen. The height is the window
+     height at load (--start-h, frozen by shop.js), not a live viewport unit: in-app browsers
+     (Messenger, Instagram) resize the window as their bars slide, and a live height re-cropped
+     the photo while scrolling, which looked like zooming. */
   .hero {
     flex-direction: column;
     align-items: stretch;
-    height: calc(100vh - env(safe-area-inset-top, 0px) - 36px - var(--logo-h) - clamp(32px, 5vh, 64px));
-    height: calc(100svh - env(safe-area-inset-top, 0px) - 36px - var(--logo-h) - clamp(32px, 5vh, 64px));
+    height: calc(var(--start-h, 100svh) - env(safe-area-inset-top, 0px) - 36px - var(--logo-h) - clamp(32px, calc(var(--start-h, 100vh) * .05), 64px));
     min-height: 420px;
     background: none;
   }
@@ -760,6 +766,9 @@ html { scrollbar-gutter: stable; }
 }
 #bag-panel.bag-enter .bag-foot { animation-delay: .38s; }
 .bag .line { transition: opacity .25s var(--ease-soft); }
+/* While the cart is open, the lines and the foot already sit on their own GPU layers, so a
+   glide (removing/adding a line) starts without rasterising them all in its first frame. */
+.bag.is-open .line, .bag.is-open .bag-foot { will-change: transform; }
 .bag .line.is-busy { opacity: .45; pointer-events: none; }
 .bag .checkout, .more, .add, .checkout, .remove {
   transition: background-color .3s var(--ease-soft), color .3s var(--ease-soft);

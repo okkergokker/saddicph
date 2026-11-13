@@ -43,6 +43,7 @@ export async function renderCatalogue(main) {
     grid.innerHTML = shown.length
       ? shown.map((product, index) => cardHtml(product, CARD_SIZES, index)).join('')
       : '<p class="status">Nothing here yet.</p>'
+    grid.removeAttribute('aria-busy')
     const cards = [...grid.querySelectorAll('.card')]
     fadeInWhenLoaded(grid.querySelectorAll('.card-img:not(.card-img-alt)'))
     revealOnScroll(cards)

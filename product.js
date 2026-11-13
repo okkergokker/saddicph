@@ -52,6 +52,8 @@ function section(title, body) {
 export async function renderProduct(main, { addToCart }) {
   const handle = decodeURIComponent(location.pathname.replace(/^\/products\//, '').replace(/\/$/, ''))
   const { product, others } = handle ? await fetchProduct(handle) : { product: null, others: [] }
+  // Nothing is shown while loading (no "Loading…" text); the page simply appears when ready.
+  main.removeAttribute('aria-busy')
   if (!product) {
     document.title = 'Product not found – Saddi Copenhagen'
     main.innerHTML = '<p class="status">Product not found.</p><p class="pd-back"><a href="/catalogue">Back to the catalogue</a></p>'

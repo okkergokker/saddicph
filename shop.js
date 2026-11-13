@@ -306,6 +306,21 @@ function setupNewsletter() {
   })
 }
 
+// --start-h: the window height at load, used by CSS where a live viewport unit would move
+// things. It only follows width changes (rotating the phone), never height-only changes: in-app
+// browsers (Messenger, Instagram) and Safari resize the window as their bars slide in and out.
+function freezeStartHeight() {
+  let width = 0
+  const update = () => {
+    if (window.innerWidth === width) return
+    width = window.innerWidth
+    document.documentElement.style.setProperty('--start-h', window.innerHeight + 'px')
+  }
+  update()
+  window.addEventListener('resize', update)
+}
+freezeStartHeight()
+
 async function boot() {
   scrollHomeMark()
   markCurrentNav()
@@ -319,9 +334,21 @@ async function boot() {
     let cart = await readCart()
     remember(cart)
     // enter=true staggers the lines in; plain redraws (qty/remove) must not replay it.
+    // The item list is only a scroll container when it actually overflows the sheet (many
+    // items). Switching a scroll container on and off rebuilds the phone's GPU layers, so this
+    // runs only after a redraw or a finished glide, never during one.
+    // Measured from layout offsets, which ignore transforms (lines rising in or gliding).
+    const fitList = () => {
+      const items = bagPanel.querySelector('.bag-items')
+      const last = items && items.lastElementChild
+      if (!last) return
+      const overflows = last.offsetTop + last.offsetHeight > items.offsetTop + items.clientHeight + 1
+      items.classList.toggle('is-scrolling', overflows)
+    }
     const drawBag = (enter = false) => {
       bagPanel.classList.toggle('bag-enter', enter)
       renderCart(cart, bagPanel)
+      fitList()
     }
     const isBagOpen = () => bag.classList.contains('is-open')
     const drawer = bag.querySelector('.bag-drawer')
@@ -351,11 +378,11 @@ async function boot() {
     let morph = null
     const endMorph = () => {
       if (!morph) return
-      const { animations, items } = morph
+      const { animations } = morph
       morph = null
       drawer.style.paddingBottom = ''
-      if (items) items.style.overflow = ''
       animations.forEach((animation) => animation.cancel())
+      fitList()
     }
     const morphSheet = (mutate) => {
       if (!isBagOpen() || prefersReducedMotion()) {
@@ -378,10 +405,6 @@ async function boot() {
       const held = glideEdge ? Math.max(fromBottom, toBottom) : toBottom
       const reserve = held - toBottom
       if (reserve > 0.5) drawer.style.paddingBottom = parseFloat(getComputedStyle(drawer).paddingBottom) + reserve + 'px'
-      // The list clips its children; lines sliding up from below must stay visible on the way.
-      const items = bagPanel.querySelector('.bag-items')
-      const scrolls = items && items.scrollHeight > items.clientHeight + 1
-      if (items && !scrolls) items.style.overflow = 'visible'
       // Final layout positions, measured before any new transform is applied.
       const to = new Map(pieces().map((el) => [el, el.getBoundingClientRect().top]))
       const timing = { duration: MORPH_MS, easing: easeMorph, fill: 'forwards' }
@@ -404,7 +427,7 @@ async function boot() {
             { ...timing, delay: 120, fill: 'both' }))
         }
       })
-      const current = { animations, items: items && !scrolls ? items : null }
+      const current = { animations }
       morph = current
       if (!animations.length) {
         endMorph()
@@ -531,6 +554,7 @@ async function boot() {
         const fromHidden = bag.hidden
         drawBag(true)
         bag.hidden = false
+        fitList()
         if (fromHidden) measureSheet(true)
         void bag.offsetWidth
         bag.classList.add('is-open')
